@@ -10,7 +10,8 @@ const DESCRIPTION = `Shared REST API for the CampusMeal Android (Kotlin) and iOS
 - Successful responses return the DTO directly at the JSON root. There is no \`success\`/\`data\` wrapper.
 - Errors always use: \`{ statusCode, code, message, timestamp, path }\`.
 - Timestamps are ISO-8601 in UTC; expiration dates use \`YYYY-MM-DD\`; prices are whole Colombian pesos (integers).
-- Protected endpoints (from Issue #2) will require \`Authorization: Bearer <access token>\`.`;
+- Protected endpoints require \`Authorization: Bearer <accessToken>\`. Get tokens from \`POST /api/v1/auth/login\`, then use **Authorize**.
+- Refresh tokens are single use: \`POST /api/v1/auth/refresh\` returns a new pair. Send at most one refresh at a time per session.`;
 
 export function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()

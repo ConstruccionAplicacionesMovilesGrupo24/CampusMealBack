@@ -1,4 +1,5 @@
 import {
+  durationToSeconds,
   EnvironmentVariables,
   NodeEnvironment,
   validateEnvironment,
@@ -15,9 +16,17 @@ export interface DatabaseConfiguration {
   ssl: boolean;
 }
 
+export interface AuthConfiguration {
+  accessSecret: string;
+  refreshSecret: string;
+  accessTtlSeconds: number;
+  refreshTtlSeconds: number;
+}
+
 export interface Configuration {
   app: AppConfiguration;
   database: DatabaseConfiguration;
+  auth: AuthConfiguration;
 }
 
 export function buildConfiguration(env: EnvironmentVariables): Configuration {
@@ -30,6 +39,12 @@ export function buildConfiguration(env: EnvironmentVariables): Configuration {
     database: {
       url: env.DATABASE_URL,
       ssl: env.DATABASE_SSL,
+    },
+    auth: {
+      accessSecret: env.JWT_ACCESS_SECRET,
+      refreshSecret: env.JWT_REFRESH_SECRET,
+      accessTtlSeconds: durationToSeconds(env.JWT_ACCESS_TTL),
+      refreshTtlSeconds: durationToSeconds(env.JWT_REFRESH_TTL),
     },
   };
 }

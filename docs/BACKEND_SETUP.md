@@ -19,10 +19,14 @@ cd CampusMealBack
 
 npm install                 # use `npm ci` for an exact, lockfile-only install
 cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
+# Edit .env: set JWT_ACCESS_SECRET / JWT_REFRESH_SECRET (section 3.1) and the DEMO_* passwords.
 docker compose up -d postgres
 npm run migration:run
+npm run seed:auth           # optional: demo USER and ANALYST accounts
 npm run start:dev
 ```
+
+The API refuses to start until the two JWT secrets are replaced with random values.
 
 Then open:
 
@@ -43,10 +47,31 @@ environment at startup and exits with a list of the problems if anything is wron
 | `APP_TIMEZONE` | yes | `America/Bogota` | IANA time zone for business-date logic. API timestamps are always UTC. |
 | `DATABASE_SSL` | no (default `false`) | `false` | Set `true` for managed PostgreSQL providers that require TLS. |
 | `POSTGRES_PORT` | no (default `5432`) | `5432` | Host port used by Docker Compose only. |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL` | no | see `.env.example` | Reserved for Issue #2. Not used yet. |
+| `JWT_ACCESS_SECRET` | yes | *(random, ≥ 32 chars)* | Signs access tokens (HS256). |
+| `JWT_REFRESH_SECRET` | yes | *(random, ≥ 32 chars, different)* | Signs refresh tokens; also the root of the key that hashes stored refresh tokens. |
+| `JWT_ACCESS_TTL` | yes | `15m` | Access-token lifetime: `<number><s\|m\|h\|d>`. |
+| `JWT_REFRESH_TTL` | yes | `7d` | Refresh-token/session lifetime. Must be longer than `JWT_ACCESS_TTL`. |
+| `DEMO_USER_NAME`, `DEMO_USER_EMAIL`, `DEMO_USER_PASSWORD` | only for `seed:auth` | see `.env.example` | Demo `USER` account. |
+| `DEMO_ANALYST_NAME`, `DEMO_ANALYST_EMAIL`, `DEMO_ANALYST_PASSWORD` | only for `seed:auth` | see `.env.example` | Demo `ANALYST` account. |
 | `ROUTE_PROVIDER_MODE`, `ROUTE_PROVIDER_URL`, `ROUTE_PROVIDER_API_KEY`, `ROUTE_PROVIDER_TIMEOUT_MS` | no | see `.env.example` | Reserved for the route-provider issue. Not used yet. |
 
 Variables already set in the shell take precedence over `.env`.
+
+### 3.1 JWT secrets
+
+Generate two **different** random values and paste them into `.env`:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Startup is refused (the error names the variable, never its value) when a secret is missing,
+shorter than 32 characters, has fewer than 10 distinct characters, contains a placeholder
+word (`replace`, `changeme`, `example`, `placeholder`, `secret`, `password`, ...), or when both
+secrets are equal. Every developer and every environment should have its own secrets.
+Changing `JWT_REFRESH_SECRET` logs out every session; changing `JWT_ACCESS_SECRET` invalidates
+current access tokens (clients recover through refresh).
 
 ## 4. PostgreSQL (Docker Compose)
 
@@ -83,11 +108,76 @@ docker compose exec postgres psql -U campusmeal -d campusmeal
 | `npm run migration:generate -- src/database/migrations/AddSomething` | Generate a migration from entity changes (needs a running database). |
 | `npm run migration:run:prod` | Apply migrations from compiled `dist/` (used in the container). |
 
+Current migrations:
+
+| Migration | Creates |
+|---|---|
+| `1790089200000-CreateAppMetadata` (Issue #1) | `app_metadata` |
+| `1790094600000-CreateUsersAndRefreshSessions` (Issue #2) | `user_role` enum, `users`, `refresh_sessions` |
+
+Updating an existing Issue #1 database: `npm run migration:run` applies only the pending Issue #2
+migration. `npm run migration:revert` removes only the newest migration (Issue #2: drops
+`refresh_sessions`, `users` and `user_role`, **deleting all accounts**; `app_metadata` is kept).
+
+The CLI validates the full environment, so the JWT variables must be set for migration commands too.
+
 Rules for the team:
 
 - Never edit a migration that has been merged; add a new one.
 - Every migration must have a working `down()`. Check with `migration:revert` then `migration:run`.
-- Entities go in `src/database/entities/*.entity.ts` so the glob picks them up.
+- Entities live in their feature module (`src/<module>/entities/*.entity.ts`); the glob
+  `src/**/*.entity.ts` picks them up. After writing a migration by hand, `migration:generate`
+  should report "No changes in database schema were found".
+
+## 5.1 Demo users (auth seed)
+
+```bash
+npm run seed:auth
+```
+
+Creates `DEMO_USER_EMAIL` with role `USER` and `DEMO_ANALYST_EMAIL` with role `ANALYST`, using
+the same Argon2id hashing as registration. Passwords come from `DEMO_USER_PASSWORD` and
+`DEMO_ANALYST_PASSWORD` (same policy as registration) and are only required for this command.
+
+The seed is idempotent: existing accounts are reported as `already exists, left unchanged` and
+are never modified (their passwords are not replaced). To reset a demo password, delete the user
+(its sessions cascade) and seed again:
+
+```bash
+docker compose exec postgres psql -U campusmeal -d campusmeal -c "DELETE FROM users WHERE email = 'demo@campusmeal.local'"
+```
+
+In the container: `npm run seed:auth:prod` (compiled seed).
+
+## 5.2 Trying the authentication flow with curl
+
+Replace the placeholder values; never paste real tokens into shared documents or chats.
+
+```bash
+API=http://localhost:3000/api/v1
+
+# Register (201) - returns { accessToken, refreshToken }
+curl -i -X POST $API/auth/register -H 'Content-Type: application/json' \
+  -d '{"fullName":"Test Student","email":"student@example.edu","password":"ExamplePassword123"}'
+
+# Login (200)
+curl -i -X POST $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"student@example.edu","password":"ExamplePassword123"}'
+
+# Current user (200)
+curl -i $API/auth/me -H 'Authorization: Bearer <accessToken>'
+
+# Refresh (200) - store the NEW pair; the submitted refresh token stops working
+curl -i -X POST $API/auth/refresh -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<refreshToken>"}'
+
+# Logout (204, empty body)
+curl -i -X POST $API/auth/logout -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<latest refreshToken>"}'
+```
+
+On Windows PowerShell use `curl.exe` and escape the JSON quotes, or use Swagger UI
+(`/api/docs` → **Authorize** with the access token).
 
 ## 6. Everyday commands
 
@@ -105,17 +195,16 @@ Rules for the team:
 ```bash
 docker build -t campusmeal-api .
 
-# Apply migrations with the compiled data source
-docker run --rm \
-  -e NODE_ENV=production -e PORT=3000 -e APP_TIMEZONE=America/Bogota \
-  -e DATABASE_URL=postgresql://campusmeal:campusmeal_dev@host.docker.internal:5432/campusmeal \
-  campusmeal-api npm run migration:run:prod
+# Configuration comes from your .env (never baked into the image); DATABASE_URL is
+# overridden so the container reaches the Compose PostgreSQL on the host.
+DB=postgresql://campusmeal:campusmeal_dev@host.docker.internal:5432/campusmeal
+
+# Apply migrations / seed demo users with the compiled scripts
+docker run --rm --env-file .env -e NODE_ENV=production -e DATABASE_URL=$DB campusmeal-api npm run migration:run:prod
+docker run --rm --env-file .env -e NODE_ENV=production -e DATABASE_URL=$DB campusmeal-api npm run seed:auth:prod
 
 # Run the API
-docker run --rm -p 3000:3000 \
-  -e NODE_ENV=production -e PORT=3000 -e APP_TIMEZONE=America/Bogota \
-  -e DATABASE_URL=postgresql://campusmeal:campusmeal_dev@host.docker.internal:5432/campusmeal \
-  campusmeal-api
+docker run --rm -p 3000:3000 --env-file .env -e NODE_ENV=production -e PORT=3000 -e DATABASE_URL=$DB campusmeal-api
 ```
 
 `host.docker.internal` reaches the Compose PostgreSQL published on the host (Docker Desktop;
@@ -135,6 +224,12 @@ contains `.env`: pass configuration at run time.
 | Symptom | Cause / fix |
 |---|---|
 | `Invalid environment configuration: - "DATABASE_URL" is required` | `.env` missing or incomplete. Copy `.env.example` to `.env`. |
+| `"JWT_ACCESS_SECRET" looks like a placeholder or weak value` (or `is required`) | Generate secrets as in section 3.1. Existing Issue #1 `.env` files still contain `replace-in-issue-2`. |
+| `"JWT_REFRESH_SECRET" must be a random value different from JWT_ACCESS_SECRET` | Use two different generated values. |
+| `npm install` fails in `argon2` with `gyp ERR! find VS` / "Could not find any Visual Studio installation" | npm could not use argon2's prebuilt binary and fell back to compiling C++. The project pins `argon2@0.44.x`, whose Windows/macOS/Linux prebuilds load on Node 20.17+. If it still happens: check Node is 64-bit (`node -p process.arch` → `x64`/`arm64`), delete `node_modules` and reinstall. Do not replace argon2 with another hashing library. |
+| `[seed:auth] ... already exists, left unchanged` | Expected on re-runs; the seed never overwrites accounts (see 5.1). |
+| `/auth/refresh` returns `401 INVALID_REFRESH_TOKEN` while another request just refreshed successfully | Expected: the client sent the same refresh token twice (e.g. two refreshes in parallel). Only one wins; the winner's new token remains valid. Make the client use a single-flight refresh and reuse the stored new tokens. |
+| `/auth/refresh` returns `401 REFRESH_SESSION_REVOKED` | The session was logged out. Log in again. |
 | `Bind for 0.0.0.0:5432 failed: port is already allocated` or the app connects to the wrong database / `password authentication failed` | Another PostgreSQL (e.g. a native Windows install) already uses 5432. Set `POSTGRES_PORT=5433` in `.env`, change `DATABASE_URL` to `...@localhost:5433/...`, then `docker compose up -d postgres`. |
 | `Unable to connect to the database. Retrying (1)...` then exit | PostgreSQL not running or not healthy yet. `docker compose ps`; wait for `(healthy)`. The app retries 5 times, 3 s apart. |
 | `error during connect: ... dockerDesktopLinuxEngine` | Docker Desktop is not running. Start it and retry. |
