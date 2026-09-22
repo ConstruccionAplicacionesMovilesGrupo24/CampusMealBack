@@ -1,0 +1,27 @@
+# Local development only. Credentials below are development values that match
+# .env.example; never reuse them in a deployed environment.
+name: campusmeal
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: campusmeal
+      POSTGRES_USER: campusmeal
+      POSTGRES_PASSWORD: campusmeal_dev
+    ports:
+      # Override with POSTGRES_PORT in .env if 5432 is already in use.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18+ images keep versioned data under /var/lib/postgresql.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campusmeal -d campusmeal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
