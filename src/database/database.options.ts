@@ -16,9 +16,12 @@ export function createDataSourceOptions(
     type: 'postgres',
     url: database.url,
     ssl: database.ssl,
-    entities: [join(__dirname, 'entities', `*.entity.${extension}`)],
+    // Each feature module keeps its entities, e.g. src/users/entities/user.entity.ts.
+    entities: [join(__dirname, '..', '**', `*.entity.${extension}`)],
     migrations: [join(__dirname, 'migrations', `*.${extension}`)],
     migrationsTableName: 'typeorm_migrations',
+    // UUID defaults use PostgreSQL's built-in gen_random_uuid() (no uuid-ossp extension).
+    uuidExtension: 'pgcrypto',
     // Schema changes happen only through migrations, in every environment.
     synchronize: false,
     migrationsRun: false,
