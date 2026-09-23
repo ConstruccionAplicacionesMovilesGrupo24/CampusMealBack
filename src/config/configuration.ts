@@ -23,10 +23,18 @@ export interface AuthConfiguration {
   refreshTtlSeconds: number;
 }
 
+export interface RouteProviderConfiguration {
+  mode: 'deterministic' | 'external';
+  url: string | null;
+  apiKey: string | null;
+  timeoutMs: number;
+}
+
 export interface Configuration {
   app: AppConfiguration;
   database: DatabaseConfiguration;
   auth: AuthConfiguration;
+  routeProvider: RouteProviderConfiguration;
 }
 
 export function buildConfiguration(env: EnvironmentVariables): Configuration {
@@ -45,6 +53,12 @@ export function buildConfiguration(env: EnvironmentVariables): Configuration {
       refreshSecret: env.JWT_REFRESH_SECRET,
       accessTtlSeconds: durationToSeconds(env.JWT_ACCESS_TTL),
       refreshTtlSeconds: durationToSeconds(env.JWT_REFRESH_TTL),
+    },
+    routeProvider: {
+      mode: env.ROUTE_PROVIDER_MODE ?? 'deterministic',
+      url: env.ROUTE_PROVIDER_URL || null,
+      apiKey: env.ROUTE_PROVIDER_API_KEY || null,
+      timeoutMs: env.ROUTE_PROVIDER_TIMEOUT_MS ?? 5000,
     },
   };
 }
