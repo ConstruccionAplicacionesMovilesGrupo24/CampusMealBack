@@ -82,6 +82,7 @@ provider credentials.
 | 403 | `FORBIDDEN` | Authenticated but the role is not allowed. |
 | 409 | `EMAIL_ALREADY_REGISTERED` | Registration with an email that already has an account. |
 | 404 | `NOT_FOUND` | Resource or route does not exist. |
+| 404 | `INVENTORY_ITEM_NOT_FOUND` | Inventory item missing, inactive, or owned by another user (the three are indistinguishable). |
 | 405 | `METHOD_NOT_ALLOWED` | HTTP method not supported. |
 | 409 | `CONFLICT` | State conflict (e.g. duplicated resource). |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the size limit. |
@@ -368,3 +369,94 @@ Returns the active restaurant and its currently available meals. Because this en
 origin/context, its route fields are `null` and `routeProviderStatus` is `UNAVAILABLE`; the backend
 does not retain exact coordinates from an earlier search just to populate detail responses.
 
+
+## 9. Inventory and expiring items (BQ2)
+
+All inventory endpoints require `Authorization: Bearer <accessToken>` and act **only** on the
+authenticated user's items. No endpoint accepts a user id in the body, query or path.
+
+### Item DTO (all five endpoints)
+
+```json
+{
+  "id": "f870e006-aacf-4a16-b7ee-0566a91555aa",
+  "name": "Whole milk",
+  "quantity": 1.0,
+  "unit": "L",
+  "expirationDate": "2026-09-25",
+  "remainingDays": 1,
+  "active": true
+}
+```
+
+All seven fields are **always present and never null**; this matches Android's
+`InventoryItemDto`, where every field is required. List responses wrap them in
+`{ "items": [...] }` (Android `ExpiringInventoryResponseDto`), and an empty result is
+`{"items":[]}` with HTTP 200 — never a `success`/`data` wrapper and never 204.
+
+| Field | Notes |
+|---|---|
+| `id` | UUID of the item. |
+| `name`, `unit` | Trimmed by the server (max 150 / 30 characters), never blank. |
+| `quantity` | Finite number ≥ 0; may be fractional (`0.5`). |
+| `expirationDate` | Calendar date `YYYY-MM-DD` (never a timestamp). |
+| `remainingDays` | **Calculated by the backend**: expiration day − today in `America/Bogota`. `0` expires today, `1` tomorrow, negative already expired. Clients must not recompute or reorder by it. |
+| `active` | `false` only for soft-deleted items, which the API never returns. |
+
+### `GET /api/v1/inventory`
+
+The user's **active** items, including already expired ones (negative `remainingDays`), ordered
+like the BQ2 list. Returns 200 with `{"items":[]}` when empty.
+
+### `GET /api/v1/inventory/expiring?withinDays=3` (BQ2)
+
+Active items whose expiration date falls between **today and today + `withinDays`, both
+inclusive**, in the `America/Bogota` calendar. Excluded: expired items (`remainingDays < 0`),
+inactive items and anything beyond the window. An item expiring today is included.
+
+`withinDays` is an optional **integer from 0 to 30**, default **3**. `-1`, `31`, `3.5` and `abc`
+return `400 VALIDATION_ERROR`.
+
+**Priority order (the order to consume items in):** lower `remainingDays` first, then earlier
+`expirationDate`, then item name alphabetically (case-insensitive), then item UUID as a stable
+tie-break. The order is deterministic; clients display the list exactly as received.
+
+### `POST /api/v1/inventory`
+
+```json
+{ "name": "Whole milk", "quantity": 1.0, "unit": "L", "expirationDate": "2026-09-25" }
+```
+
+Returns **201** with the item DTO. A past `expirationDate` is accepted, so an already expired
+item can be recorded. `expirationDate` must be a real calendar date in exact `YYYY-MM-DD` form:
+`2026-02-30`, `25/09/2026`, `2026-9-5` and `2026-09-25T00:00:00Z` are rejected with
+`400 VALIDATION_ERROR`. Unknown fields (`userId`, `active`, `remainingDays`, …) are rejected too.
+
+### `PATCH /api/v1/inventory/{id}`
+
+Any subset of `name`, `quantity`, `unit`, `expirationDate`; omitted fields keep their value.
+Returns **200** with the updated DTO. An empty body is `400`. `id`, `userId`, `active` and the
+timestamps cannot be changed.
+
+### `DELETE /api/v1/inventory/{id}`
+
+Soft deactivation: sets `active = false` and keeps the row. Returns **204 with an empty body**
+(clients must not try to decode one). The item then disappears from both list endpoints, and a
+second delete returns 404.
+
+### Not-found and isolation
+
+An unknown id, an inactive item and **another user's item** all return exactly the same
+response, so a caller cannot probe which UUIDs exist:
+
+```json
+{
+  "statusCode": 404,
+  "code": "INVENTORY_ITEM_NOT_FOUND",
+  "message": "Inventory item not found",
+  "timestamp": "2026-09-24T15:30:00.000Z",
+  "path": "/api/v1/inventory/f870e006-aacf-4a16-b7ee-0566a91555aa"
+}
+```
+
+A malformed UUID in the path returns `400 BAD_REQUEST` (path-parameter validation).

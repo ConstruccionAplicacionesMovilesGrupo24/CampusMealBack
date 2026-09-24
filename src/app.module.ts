@@ -5,6 +5,7 @@ import configuration from './config/configuration';
 import { validateEnvironment } from './config/environment.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
 import { RoutesModule } from './routes/routes.module';
 import { UsersModule } from './users/users.module';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     RoutesModule,
     RestaurantsModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}
