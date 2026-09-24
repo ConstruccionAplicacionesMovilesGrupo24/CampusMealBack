@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
 import configuration from './config/configuration';
 import { validateEnvironment } from './config/environment.validation';
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     RestaurantsModule,
     InventoryModule,
     RecommendationsModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}
