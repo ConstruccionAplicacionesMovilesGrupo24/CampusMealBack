@@ -103,3 +103,31 @@ The implementation is context-aware because the same restaurant catalog can prod
 results when request time, origin, available minutes, budget or dietary preferences change. Route
 provider degradation changes route fields/status without turning otherwise usable catalog matches
 into an API failure.
+
+## Integration verification (2026-09-24)
+
+Run against `main` @ `d135d6f` (Node 22, PostgreSQL 16, `ROUTE_PROVIDER_MODE=deterministic`) after
+`migration:run`, `seed:auth`, `seed:restaurants`. Reproduce with `scripts/verify-issue-05.sh`.
+Origin `{4.6025, -74.0653}`, user `demo@campusmeal.local`. **20/20 checks pass.**
+
+| # | Case | Expected | Result |
+|---|---|---|---|
+| 1 | 12:30 Bogotá, 45 min, 20 000 COP | 200, open restaurants ordered by time → price | The Garden (17 min, 14 500), Green Bowl (17, 17 000), Sushi Rápido (19), Quinoa Corner (21) ✔ |
+| 2 | `["VEGETARIAN"]` | Only restaurants with a vegetarian meal; min price from eligible meals | The Garden 14 500, Green Bowl 17 000, Sushi Rápido 20 000 ✔ |
+| 3 | `["VEGAN","GLUTEN_FREE"]` | Meal must have every tag | Green Bowl (19 000), Quinoa Corner (13 000) ✔ |
+| 4 | Budget 14 000 | Only restaurants with a meal ≤ budget | Quinoa Corner ✔ |
+| 5 | 16 available minutes | Known totals (`2·walk+15`) above limit excluded | `[]` ✔ |
+| 6 | 03:00 Bogotá | Closed restaurants excluded, 200 | `[]` ✔ |
+| 7 | Budget 0 | 200 with `restaurants: []` | ✔ |
+| 8 | With `campusId` | Same rules as device location | Same as case 1 ✔ |
+| 9 | 18:00 Bogotá | Andean Flavor (17–22 h) appears | ✔ |
+| 10 | 21:45 Bogotá | `CLOSING_SOON` (≤ 30 min to close) | Andean Flavor `CLOSING_SOON` ✔ |
+| 11–15 | latitude 95 / `requestedAt` without Z / tag `KETO` / unknown field / `availableMinutes: 0` | 400 `VALIDATION_ERROR` | ✔ |
+| 16 | Invalid bearer token | 401 `INVALID_ACCESS_TOKEN` | ✔ |
+| 17 | `GET /restaurants/:id` valid | 200, route fields `null` | ✔ |
+| 18 | `GET /restaurants/abc` | 400 `BAD_REQUEST` | ✔ |
+| 19 | Unknown UUID | 404 `NOT_FOUND` | ✔ |
+| 20 | Result DTO shape | camelCase fields from the contract | ✔ |
+
+Not covered: `PARTIAL`/`UNAVAILABLE` route-provider states (need `ROUTE_PROVIDER_MODE=external`
+with a failing provider) and mobile-client runs (Issue #8).
