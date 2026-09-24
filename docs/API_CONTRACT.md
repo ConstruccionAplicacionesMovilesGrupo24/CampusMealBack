@@ -326,3 +326,45 @@ The response never includes the database URL, host, credentials or stack traces.
   Swift must not try to decode a body for 204.
 - Distinguish credential errors from connectivity: 401 on `/auth/login` means wrong
   credentials, not an expired session.
+
+
+## 8. Context-aware restaurant search (BQ4)
+
+### `POST /api/v1/restaurants/search` (bearer access token)
+
+```json
+{
+  "location": { "latitude": 4.6025, "longitude": -74.0653 },
+  "campusId": "campus-001",
+  "availableMinutes": 45,
+  "maximumBudget": 20000,
+  "dietaryPreferences": ["VEGETARIAN"],
+  "includeDelivery": true,
+  "requestedAt": "2026-09-21T17:30:00Z"
+}
+```
+
+The endpoint evaluates opening hours at `requestedAt`, requires at least one available meal within
+the budget and dietary context, asks the backend `RouteProviderPort` for walking estimates and
+filters known routes that do not fit `availableMinutes`. When route estimates are unavailable,
+otherwise valid restaurants remain in the response with `walkingMinutes` and
+`estimatedTotalMinutes` set to `null`.
+
+Successful searches return HTTP 200, including the no-results case:
+
+```json
+{
+  "restaurants": [],
+  "lastUpdatedAt": "2026-09-21T17:30:02.000Z",
+  "routeProviderStatus": "AVAILABLE"
+}
+```
+
+`routeProviderStatus` is `AVAILABLE`, `PARTIAL` or `UNAVAILABLE`.
+
+### `GET /api/v1/restaurants/:restaurantId` (bearer access token)
+
+Returns the active restaurant and its currently available meals. Because this endpoint receives no
+origin/context, its route fields are `null` and `routeProviderStatus` is `UNAVAILABLE`; the backend
+does not retain exact coordinates from an earlier search just to populate detail responses.
+
