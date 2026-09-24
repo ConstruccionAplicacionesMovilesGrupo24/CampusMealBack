@@ -179,6 +179,56 @@ curl -i -X POST $API/auth/logout -H 'Content-Type: application/json' \
 On Windows PowerShell use `curl.exe` and escape the JSON quotes, or use Swagger UI
 (`/api/docs` → **Authorize** with the access token).
 
+## 5.3 Demo inventory seed (BQ2)
+
+```bash
+npm run seed:auth        # required first: the inventory seed needs the demo user
+npm run seed:inventory
+```
+
+In the container: `npm run seed:inventory:prod` (compiled seed).
+
+Adds six items to `DEMO_USER_EMAIL` (default `demo@campusmeal.local`) with expiration dates
+**relative to today in America/Bogota**, so BQ2 stays demonstrable whenever it runs:
+
+| Item | Expires | Active | In `withinDays=3`? |
+|---|---|---|---|
+| Yogurt | today | yes | yes (`remainingDays` 0) |
+| Whole milk | +1 day | yes | yes |
+| Spinach | +3 days | yes | yes (inclusive edge) |
+| Rice | +30 days | yes | no (outside the window) |
+| Bread | −1 day | yes | no (expired; still in `GET /inventory`) |
+| Cheese | +2 days | **no** | no (inactive; hidden everywhere) |
+
+The rows have fixed ids, so the seed is idempotent: re-running **refreshes those same six rows**
+(including their dates) instead of creating duplicates. It only touches the demo user's seed rows
+and fails with `Run npm run seed:auth first.` when that user does not exist. It prints no
+passwords or tokens.
+
+## 5.4 Trying the inventory flow with curl
+
+```bash
+API=http://localhost:3000/api/v1
+TOKEN=<accessToken from /auth/login>
+
+# BQ2: items expiring within 3 days, already in consumption order (200)
+curl -i "$API/inventory/expiring?withinDays=3" -H "Authorization: Bearer $TOKEN"
+
+# All active items, expired ones included (200)
+curl -i $API/inventory -H "Authorization: Bearer $TOKEN"
+
+# Create (201) - expirationDate is a calendar date YYYY-MM-DD
+curl -i -X POST $API/inventory -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Whole milk","quantity":1.0,"unit":"L","expirationDate":"2026-09-25"}'
+
+# Update any subset of the fields (200)
+curl -i -X PATCH $API/inventory/<itemId> -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"quantity":0.5}'
+
+# Deactivate: soft delete, 204 with an empty body
+curl -i -X DELETE $API/inventory/<itemId> -H "Authorization: Bearer $TOKEN"
+```
+
 ## 6. Everyday commands
 
 | Command | Purpose |

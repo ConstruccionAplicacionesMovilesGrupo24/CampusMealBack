@@ -11,6 +11,7 @@ cp .env.example .env        # then set random JWT secrets (see docs/BACKEND_SETU
 docker compose up -d postgres
 npm run migration:run
 npm run seed:auth           # optional demo USER / ANALYST (needs DEMO_* passwords)
+npm run seed:inventory      # optional demo inventory for BQ2 (after seed:auth)
 npm run start:dev
 ```
 
@@ -19,13 +20,18 @@ npm run start:dev
 - Auth: `POST /api/v1/auth/{register,login,refresh,logout}`, `GET /api/v1/auth/me`.
   Register sends `fullName`; `/auth/me` returns `name`. Refresh tokens are single use, so
   clients must run one refresh at a time (see the API contract).
+- Inventory (BQ2): `GET|POST /api/v1/inventory`, `GET /api/v1/inventory/expiring?withinDays=3`,
+  `PATCH|DELETE /api/v1/inventory/:id`. Per-user items; the backend calculates `remainingDays`
+  in `America/Bogota` and returns them in consumption priority order.
 
 ## Documentation
 
 - [API contract](docs/API_CONTRACT.md): conventions every endpoint follows (prefix, direct responses, error format, data formats).
 - [Backend setup](docs/BACKEND_SETUP.md): requirements, environment, database, migrations, Docker, troubleshooting.
 - [Issue #1 – Backend foundation](docs/ISSUE_01_BACKEND_FOUNDATION.md): what was built, decisions and validation evidence.
+- [Backend implementation](docs/BACKEND_IMPLEMENTATION.md): modules, business questions and how features fit together.
 - [Issue #2 – Authentication](docs/ISSUE_02_AUTHENTICATION.md): JWT sessions, refresh rotation, roles, seed and security checks.
+- [Issue #3 – Inventory](docs/ISSUE_03_INVENTORY.md): inventory CRUD, BQ2 expiring items, seed and validation evidence.
 
 ## Project layout
 
@@ -37,6 +43,9 @@ src/
 ├── health/        GET /api/v1/health
 ├── auth/          register/login/refresh/logout/me, JWT guard, @Auth()/@Roles(), @CurrentUser()
 ├── users/         User and RefreshSession entities, UsersService
-└── inventory/ restaurants/ routes/ recommendations/ analytics/
+├── inventory/     inventory CRUD and BQ2 expiring items (entity, repository, service)
+├── restaurants/   restaurant catalog and context-aware search
+├── routes/        walking-route provider adapters
+└── recommendations/ analytics/
                    feature modules (added by later issues)
 ```

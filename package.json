@@ -27,7 +27,9 @@
     "seed:auth": "ts-node src/database/seeds/auth.seed.ts",
     "seed:auth:prod": "node dist/database/seeds/auth.seed.js",
     "seed:restaurants": "ts-node src/database/seeds/restaurants.seed.ts",
-    "seed:restaurants:prod": "node dist/database/seeds/restaurants.seed.js"
+    "seed:restaurants:prod": "node dist/database/seeds/restaurants.seed.js",
+    "seed:inventory": "ts-node src/database/seeds/inventory.seed.ts",
+    "seed:inventory:prod": "node dist/database/seeds/inventory.seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.5",
