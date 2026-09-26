@@ -32,6 +32,9 @@ export enum ErrorCode {
 
   // Inventory (Issue #3)
   INVENTORY_ITEM_NOT_FOUND = 'INVENTORY_ITEM_NOT_FOUND',
+
+  // Analytics (Issue #7)
+  RECOMMENDATION_NOT_FOUND = 'RECOMMENDATION_NOT_FOUND',
 }
 
 const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {

@@ -16,7 +16,7 @@ live in [API_CONTRACT.md](API_CONTRACT.md); per-issue evidence lives in the `ISS
 | `inventory` | Per-user pantry items and BQ2 expiring-item prioritization. | #3 |
 | `routes` | Walking-route provider port with deterministic and external adapters. | #4 |
 | `restaurants` | Restaurant/meal catalog and context-aware search (BQ4). | #4, #5 |
-| `recommendations`, `analytics` | Placeholders for later issues. | — |
+| `analytics` | Recommendation impression/selection events and BQ8 explanation selection rate. | #7 |
 
 Cross-cutting rules every module follows: global prefix `/api/v1`; DTO validation with
 `whitelist`, `forbidNonWhitelisted` and `transform`; success DTOs returned directly at the JSON

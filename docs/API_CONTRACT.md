@@ -83,6 +83,7 @@ provider credentials.
 | 409 | `EMAIL_ALREADY_REGISTERED` | Registration with an email that already has an account. |
 | 404 | `NOT_FOUND` | Resource or route does not exist. |
 | 404 | `INVENTORY_ITEM_NOT_FOUND` | Inventory item missing, inactive, or owned by another user (the three are indistinguishable). |
+| 404 | `RECOMMENDATION_NOT_FOUND` | Analytics event for a recommendation that does not exist or belongs to another user (indistinguishable). |
 | 405 | `METHOD_NOT_ALLOWED` | HTTP method not supported. |
 | 409 | `CONFLICT` | State conflict (e.g. duplicated resource). |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the size limit. |
@@ -460,3 +461,73 @@ response, so a caller cannot probe which UUIDs exist:
 ```
 
 A malformed UUID in the path returns `400 BAD_REQUEST` (path-parameter validation).
+
+## 10. Analytics events and BQ8 (explanation selection rate)
+
+### `POST /api/v1/analytics/events` (bearer access token, any role)
+
+Impression — send once when the comparison result becomes visible:
+
+```json
+{
+  "clientEventId": "1de89c60-714d-4d12-ae34-946cedd79f9a",
+  "recommendationId": "<recommendationId from POST meal-decisions/compare>",
+  "eventType": "RECOMMENDATION_IMPRESSION",
+  "selectedAlternative": null,
+  "platform": "IOS",
+  "occurredAt": "2026-09-21T17:30:05Z"
+}
+```
+
+Selection — send when the user picks an alternative:
+
+```json
+{
+  "clientEventId": "8e52efc2-22c8-4bc7-a428-c81c0b38ce12",
+  "recommendationId": "<same recommendationId>",
+  "eventType": "RECOMMENDATION_SELECTED",
+  "selectedAlternative": "COOK",
+  "platform": "ANDROID",
+  "occurredAt": "2026-09-21T17:30:20Z"
+}
+```
+
+| Field | Rule |
+|---|---|
+| `clientEventId` | UUID generated on the device. Re-sending the same value (retry) returns 202 again but is stored once. |
+| `recommendationId` | UUID of a recommendation that belongs to the authenticated user. |
+| `eventType` | `RECOMMENDATION_IMPRESSION` or `RECOMMENDATION_SELECTED`. |
+| `selectedAlternative` | `COOK`, `WALK` or `ORDER`; **required** for a selection, `null`/omitted for an impression. |
+| `platform` | `ANDROID` or `IOS`. |
+| `occurredAt` | ISO-8601 UTC instant ending in `Z`. |
+
+Clients never send the explanation category, coordinates, tokens or any other field — unknown
+fields are rejected with `400 VALIDATION_ERROR`.
+
+| Status | Body |
+|---|---|
+| **202** | Empty body (do not decode). |
+| 400 | `VALIDATION_ERROR` (missing `selectedAlternative` on a selection, bad enum, no `Z`, unknown field). |
+| 401 | `INVALID_ACCESS_TOKEN`. |
+| 404 | `RECOMMENDATION_NOT_FOUND` (unknown or another user's recommendation). |
+
+### `GET /api/v1/analytics/explanation-selection?from=YYYY-MM-DD&to=YYYY-MM-DD` (`ANALYST` only)
+
+```json
+{
+  "from": "2026-09-01",
+  "to": "2026-09-30",
+  "results": [
+    { "explanationType": "TIME_PRIORITY", "impressions": 2, "selections": 2, "selectionRate": 1 },
+    { "explanationType": "BUDGET_PRIORITY", "impressions": 6, "selections": 2, "selectionRate": 0.3333 }
+  ]
+}
+```
+
+- `from`/`to` are inclusive calendar dates in `America/Bogota`, applied to `occurredAt`.
+- `selectionRate = distinct recommendations selected ÷ distinct recommendations displayed`,
+  a decimal from 0 to 1 rounded to 4 places; 0 when there are no impressions.
+- `explanationType` comes from the stored recommendation (Issue #6), never from the client.
+- Ordered by `selectionRate` descending (ties: more impressions first, then type name).
+- A range with no events returns `results: []`. Regular users get `403 FORBIDDEN`;
+  `from > to` or a malformed date returns `400 VALIDATION_ERROR`.
