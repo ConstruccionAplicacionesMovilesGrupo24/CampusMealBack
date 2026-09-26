@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -24,6 +25,11 @@ import { ClientPlatform } from '../enums/client-platform.enum';
 })
 @Index('IDX_analytics_events_recommendation_id', ['recommendationId'])
 @Index('IDX_analytics_events_occurred_at', ['occurredAt'])
+// Declared here too (created by migration 1790430000000) so migration:generate keeps it.
+@Check(
+  'CHK_analytics_events_selection_alternative',
+  `("event_type" = 'RECOMMENDATION_SELECTED' AND "selected_alternative" IS NOT NULL) OR ("event_type" = 'RECOMMENDATION_IMPRESSION' AND "selected_alternative" IS NULL)`,
+)
 export class AnalyticsEvent {
   @PrimaryGeneratedColumn('uuid', {
     primaryKeyConstraintName: 'PK_analytics_events_id',

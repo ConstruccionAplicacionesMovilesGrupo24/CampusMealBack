@@ -24,7 +24,7 @@ export interface AuthConfiguration {
 }
 
 export interface RouteProviderConfiguration {
-  mode: 'deterministic' | 'external';
+  mode: 'deterministic' | 'valhalla' | 'external';
   url: string | null;
   apiKey: string | null;
   timeoutMs: number;

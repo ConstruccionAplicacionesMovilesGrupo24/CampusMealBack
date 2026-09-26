@@ -77,10 +77,29 @@ Two implementations, chosen by `ROUTE_PROVIDER_MODE` (`src/routes/routes.module.
 - Neither the API key nor exact user coordinates are ever logged (only `error.name` on
   failure), per architecture doc §18.
 
+## 5.1 Real provider: Valhalla (added 2026-09-25)
+
+`ROUTE_PROVIDER_MODE=valhalla` selects `ValhallaRouteAdapter`
+(`src/routes/infrastructure/valhalla-route.adapter.ts`). It POSTs one pedestrian matrix request to
+Valhalla's `/sources_to_targets` (`{ sources: [origin], targets: [...], costing: "pedestrian" }`) and
+maps each target's `time` (seconds) to whole minutes. `ROUTE_PROVIDER_URL` defaults to the public
+FOSSGIS instance `https://valhalla1.openstreetmap.de/sources_to_targets`; no API key is used.
+
+- Timeout (`ROUTE_PROVIDER_TIMEOUT_MS`), non-2xx or a malformed body → `UNAVAILABLE`; a target
+  without a route → `null` and `PARTIAL`. The adapter never throws and never logs coordinates.
+- Privacy: the origin coordinates of every search/compare are sent to that third-party service.
+- The public instance has a fair-use policy and no SLA: fine for the prototype, not for production
+  (self-host Valhalla or use a contracted provider there). Data is © OpenStreetMap contributors
+  (ODbL); the Android Profile screen shows the attribution.
+- Verified 2026-09-25 from Uniandes (4.6025, -74.0653): The Garden 2 min, Green Bowl 3, Quinoa
+  Corner 4, Sushi Rápido 4 (the deterministic straight-line estimate gave 1, 1, 3, 2); search took
+  ~0.7 s. A destination Valhalla cannot reach (e.g. in the ocean) makes the matrix exceed the timeout,
+  so the whole response becomes `UNAVAILABLE`.
+
 ## 6. Environment variables
 
 ```env
-ROUTE_PROVIDER_MODE=deterministic   # or "external"
+ROUTE_PROVIDER_MODE=valhalla        # or "deterministic" (offline) / "external" (generic)
 ROUTE_PROVIDER_URL=
 ROUTE_PROVIDER_API_KEY=
 ROUTE_PROVIDER_TIMEOUT_MS=5000

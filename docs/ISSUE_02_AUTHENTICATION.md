@@ -317,8 +317,8 @@ Queries printed only counts/booleans:
 - **No per-user session limit** and no "log out everywhere" endpoint.
 - **Registration reveals whether an email is registered** (409), as required by the contract.
 - **Secret rotation** logs everyone out (refresh secret) and has no key-id/overlap support.
-- The request-logging interceptor does not log requests rejected by guards (e.g. 401 on `/auth/me`),
-  because Nest runs guards before interceptors (same limitation as unmatched routes in Issue #1).
+- ~~The request-logging interceptor does not log requests rejected by guards.~~ Fixed on
+  2026-09-25: request logging is now Express middleware, so guard rejections (401/403) are logged.
 - Swagger remains public; HTTPS is expected to be provided by the deployment environment.
 
 ## 14. Files

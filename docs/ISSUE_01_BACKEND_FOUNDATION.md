@@ -13,7 +13,7 @@
 - `GET /api/v1/health` with a real PostgreSQL check (200 / 503).
 - Global error format `{ statusCode, code, message, timestamp, path }`.
 - Global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) with readable messages.
-- Safe request-logging interceptor.
+- Safe request logging (Express middleware since 2026-09-25).
 - Swagger/OpenAPI at `/api/docs` with bearer-auth definition.
 - Docker Compose (PostgreSQL only) and a multi-stage production Dockerfile.
 - Empty placeholder folders for the future modules: `auth`, `users`, `inventory`,
@@ -52,7 +52,7 @@ recommendations, analytics, seeds, Redis/queues, CI/CD, deployment.
 | `src/database/data-source.ts` | Data source for the TypeORM CLI. |
 | `src/database/migrations/1790089200000-CreateAppMetadata.ts` | Foundation migration. |
 | `src/common/filters/http-exception.filter.ts` | Global error format. |
-| `src/common/interceptors/request-logging.interceptor.ts` | Safe request logging. |
+| `src/common/interceptors/request-logging.interceptor.ts` | Safe request logging (Express middleware). |
 | `src/common/validation/validation-exception.factory.ts` | Class-validator errors → `VALIDATION_ERROR`. |
 | `src/common/validation/body-parser-error.handler.ts` | Malformed/oversized JSON → `INVALID_JSON` / `PAYLOAD_TOO_LARGE`. |
 | `src/common/enums/error-code.enum.ts` | Stable error codes and status → code mapping. |
@@ -107,11 +107,12 @@ Errors (all go through `HttpExceptionFilter`):
   logged server-side only.
 - `path` never includes the query string.
 
-Logging (`RequestLoggingInterceptor`, context `HTTP`): one line per request,
+Logging (`requestLoggingMiddleware`, context `HTTP`): one line per request,
 `METHOD /path STATUS DURATIONms`, logged on the response `finish` event so the final status is
 recorded; `warn` for 4xx and `error` for 5xx. Headers, cookies, query strings and bodies are never
-logged. Limitation: interceptors only run for matched routes, so unmatched routes (404) and
-requests rejected by the body parser are answered correctly but not logged.
+logged. Update 2026-09-25: it was originally a Nest interceptor, which never saw requests rejected
+by guards (401/403), unmatched routes or body-parser errors; it now runs as Express middleware
+registered before the JSON parser, so every request is logged.
 
 ## 7. Validation results (actually executed)
 

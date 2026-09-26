@@ -362,7 +362,24 @@ Successful searches return HTTP 200, including the no-results case:
 }
 ```
 
-`routeProviderStatus` is `AVAILABLE`, `PARTIAL` or `UNAVAILABLE`.
+`routeProviderStatus` is `AVAILABLE`, `PARTIAL` or `UNAVAILABLE`. With no candidate restaurant
+(closed, over budget, no dietary match) the provider is not called and the status is `AVAILABLE`.
+
+Each item of `restaurants`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id`, `name`, `category` | string | |
+| `openingStatus` | `OPEN` \| `CLOSING_SOON` | Evaluated at `requestedAt` in `America/Bogota`; `CLOSED` restaurants are excluded. `CLOSING_SOON` = 30 minutes or less to close. |
+| `walkingMinutes` | integer \| null | One way; `null` when the provider has no estimate. |
+| `estimatedTotalMinutes` | integer \| null | `2 × walkingMinutes + 15`; `null` with `walkingMinutes`. |
+| `minimumMealPrice` | integer (COP) | Cheapest meal that fits budget and dietary preferences. |
+| `dietaryTags` | string[] | Tags of the eligible meals (`VEGETARIAN`, `VEGAN`, `GLUTEN_FREE`). |
+| `averageRating` | number | 0–5. |
+| `recommendationReason` | string | Deterministic English sentence. |
+
+Order: restaurants with a route first, then lower `estimatedTotalMinutes`, lower
+`minimumMealPrice`, higher `averageRating`, name, id. Clients show the list as received.
 
 ### `GET /api/v1/restaurants/:restaurantId` (bearer access token)
 
@@ -502,7 +519,12 @@ Selection — send when the user picks an alternative:
 | `occurredAt` | ISO-8601 UTC instant ending in `Z`. |
 
 Clients never send the explanation category, coordinates, tokens or any other field — unknown
-fields are rejected with `400 VALIDATION_ERROR`.
+fields are rejected with `400 VALIDATION_ERROR`. A non-null `selectedAlternative` on an impression is
+not rejected: it is ignored and stored as `null` (observed 2026-09-25).
+
+Kotlin clients: do not declare default values on these request properties (e.g.
+`platform: String = "ANDROID"`); kotlinx.serialization omits them by default and the request fails
+with 400.
 
 | Status | Body |
 |---|---|
@@ -531,3 +553,51 @@ fields are rejected with `400 VALIDATION_ERROR`.
 - Ordered by `selectionRate` descending (ties: more impressions first, then type name).
 - A range with no events returns `results: []`. Regular users get `403 FORBIDDEN`;
   `from > to` or a malformed date returns `400 VALIDATION_ERROR`.
+
+## 11. Cook / Walk / Order comparison (BQ5)
+
+### `POST /api/v1/meal-decisions/compare` (bearer access token)
+
+Request: exactly the same body as `POST /restaurants/search` (§8): `location`, optional `campusId`,
+`availableMinutes` (integer ≥ 1), `maximumBudget` (integer COP ≥ 0), `dietaryPreferences`,
+`includeDelivery`, `requestedAt` (UTC, ends in `Z`). Unknown fields → `400 VALIDATION_ERROR`.
+
+**200 OK** (also when nothing fits):
+
+```json
+{
+  "recommendationId": "65362c3b-0a3d-49e8-9e21-ee981b2fb308",
+  "alternatives": [
+    {
+      "type": "COOK", "rank": 1, "score": 77, "recommended": true,
+      "estimatedMinutes": 20, "estimatedCost": 0,
+      "expiringIngredients": [{ "itemId": "d9ed…", "name": "Milk", "remainingDays": 0 }],
+      "restaurant": null
+    },
+    {
+      "type": "WALK", "rank": 2, "score": 45, "recommended": false,
+      "estimatedMinutes": 17, "estimatedCost": 14500,
+      "expiringIngredients": null,
+      "restaurant": { "id": "559b…", "name": "The Garden", "walkingMinutes": 1, "deliveryMinutes": null, "deliveryFee": null }
+    }
+  ],
+  "mainExplanation": "Cooking is recommended because it is the cheapest option that fits your available time.",
+  "supportingReasons": ["Highly rated option"]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `recommendationId` | UUID of the stored run; use it for the §10 analytics events. Present even with no alternatives. |
+| `alternatives` | At most one per `type` (`COOK`, `WALK`, `ORDER`), already ranked: higher `score`, then lower `estimatedMinutes`, lower `estimatedCost`, then `COOK`/`WALK`/`ORDER`. Exactly one has `recommended: true` (rank 1). `[]` when nothing fits. |
+| `score` | Integer 0–100, average of four strategies (time, budget, expiration, context). Clients never recompute or re-sort. |
+| `estimatedMinutes`, `estimatedCost` | Integers; cost in whole COP. |
+| `expiringIngredients` | COOK only (else `null`): the user's active items with `remainingDays` 0–3, in BQ2 order. |
+| `restaurant` | WALK/ORDER only (else `null`). WALK sets `walkingMinutes` (one way); ORDER sets `deliveryMinutes` and `deliveryFee` (COP). |
+| `mainExplanation`, `supportingReasons` | Deterministic English text for the recommended alternative; a generic sentence and `[]` when there are no alternatives. |
+
+Rules: COOK exists only when the user has an item expiring within 3 days (20 min, 0 COP are
+documented assumptions); WALK uses the route provider and `2 × walk + 15` minutes; ORDER exists only
+with `includeDelivery: true` and needs `meal price + deliveryFee ≤ maximumBudget` and delivery minutes
+≤ `availableMinutes`. Only `availableMinutes`, `maximumBudget`, the explanation and the alternatives
+are stored — never the coordinates.

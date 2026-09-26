@@ -23,6 +23,7 @@ cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 docker compose up -d postgres
 npm run migration:run
 npm run seed:auth           # optional: demo USER and ANALYST accounts
+npm run seed:restaurants    # demo restaurant catalog (BQ4/BQ5)
 npm run start:dev
 ```
 
@@ -53,7 +54,7 @@ environment at startup and exits with a list of the problems if anything is wron
 | `JWT_REFRESH_TTL` | yes | `7d` | Refresh-token/session lifetime. Must be longer than `JWT_ACCESS_TTL`. |
 | `DEMO_USER_NAME`, `DEMO_USER_EMAIL`, `DEMO_USER_PASSWORD` | only for `seed:auth` | see `.env.example` | Demo `USER` account. |
 | `DEMO_ANALYST_NAME`, `DEMO_ANALYST_EMAIL`, `DEMO_ANALYST_PASSWORD` | only for `seed:auth` | see `.env.example` | Demo `ANALYST` account. |
-| `ROUTE_PROVIDER_MODE`, `ROUTE_PROVIDER_URL`, `ROUTE_PROVIDER_API_KEY`, `ROUTE_PROVIDER_TIMEOUT_MS` | no | see `.env.example` | Reserved for the route-provider issue. Not used yet. |
+| `ROUTE_PROVIDER_MODE`, `ROUTE_PROVIDER_URL`, `ROUTE_PROVIDER_API_KEY`, `ROUTE_PROVIDER_TIMEOUT_MS` | no | see `.env.example` | Walking-route adapter (Issue #4). `valhalla` (template default) gets real walking times from Valhalla's public instance, no key needed; `deterministic` (code default when unset) computes a straight-line estimate locally with no external call; `external` is a generic adapter that requires `ROUTE_PROVIDER_URL`. See Issue #4 §5.1. |
 
 Variables already set in the shell take precedence over `.env`.
 

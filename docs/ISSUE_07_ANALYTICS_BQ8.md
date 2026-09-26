@@ -74,16 +74,22 @@ struct AnalyticsEventRequest: Encodable {
 ### Kotlin (Android)
 
 ```kotlin
-data class AnalyticsEventRequest(
-    val clientEventId: String = UUID.randomUUID().toString(),
+@Serializable
+data class RecommendationEventDto(
+    val clientEventId: String,           // UUID generated once per event, reused on retries
     val recommendationId: String,
     val eventType: String,               // RECOMMENDATION_IMPRESSION | RECOMMENDATION_SELECTED
     val selectedAlternative: String?,    // COOK | WALK | ORDER, null for impressions
-    val platform: String = "ANDROID",
-    val occurredAt: String = Instant.now().toString(),
+    val platform: String,                // "ANDROID"
+    val occurredAt: String,              // ISO-8601 UTC ending in Z
 )
-// @POST("analytics/events") suspend fun send(@Body e: AnalyticsEventRequest): Response<Unit>
+// @POST("analytics/events") suspend fun send(@Header("Authorization") a: String, @Body e: RecommendationEventDto): Response<Unit>
 ```
+
+Do not give these properties default values: kotlinx.serialization omits properties equal to their
+default (`encodeDefaults = false`), so `platform: String = "ANDROID"` would not be sent and the
+request fails with 400 (observed during the 2026-09-25 integration run). The Android implementation
+is `feature/decision/data/repository/RecommendationEventReporter.kt`.
 
 Generate `clientEventId` **once per event** and reuse it on retries.
 

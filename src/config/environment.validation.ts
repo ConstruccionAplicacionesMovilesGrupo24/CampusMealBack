@@ -15,7 +15,7 @@ export interface EnvironmentVariables {
   JWT_REFRESH_TTL: string;
 
   // Reserved for later issues; optional until they are implemented.
-  ROUTE_PROVIDER_MODE?: 'deterministic' | 'external';
+  ROUTE_PROVIDER_MODE?: 'deterministic' | 'valhalla' | 'external';
   ROUTE_PROVIDER_URL?: string;
   ROUTE_PROVIDER_API_KEY?: string;
   ROUTE_PROVIDER_TIMEOUT_MS?: number;
@@ -118,7 +118,7 @@ const environmentSchema = Joi.object<EnvironmentVariables>({
 
   // Reserved for the route-provider issue
   ROUTE_PROVIDER_MODE: Joi.string()
-    .valid('deterministic', 'external')
+    .valid('deterministic', 'valhalla', 'external')
     .optional(),
   ROUTE_PROVIDER_URL: Joi.string().uri().allow('').optional(),
   ROUTE_PROVIDER_API_KEY: Joi.string().allow('').optional(),

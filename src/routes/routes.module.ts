@@ -7,6 +7,10 @@ import {
 } from './domain/route-provider.port';
 import { DeterministicRouteAdapter } from './infrastructure/deterministic-route.adapter';
 import { ExternalRouteAdapter } from './infrastructure/external-route.adapter';
+import {
+  DEFAULT_VALHALLA_MATRIX_URL,
+  ValhallaRouteAdapter,
+} from './infrastructure/valhalla-route.adapter';
 
 @Module({
   providers: [
@@ -17,6 +21,13 @@ import { ExternalRouteAdapter } from './infrastructure/external-route.adapter';
         config: ConfigService<Configuration, true>,
       ): RouteProviderPort => {
         const routeProvider = config.get('routeProvider', { infer: true });
+
+        if (routeProvider.mode === 'valhalla') {
+          return new ValhallaRouteAdapter({
+            url: routeProvider.url ?? DEFAULT_VALHALLA_MATRIX_URL,
+            timeoutMs: routeProvider.timeoutMs,
+          });
+        }
 
         if (routeProvider.mode === 'external') {
           if (!routeProvider.url) {
