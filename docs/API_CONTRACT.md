@@ -601,3 +601,10 @@ documented assumptions); WALK uses the route provider and `2 × walk + 15` minut
 with `includeDelivery: true` and needs `meal price + deliveryFee ≤ maximumBudget` and delivery minutes
 ≤ `availableMinutes`. Only `availableMinutes`, `maximumBudget`, the explanation and the alternatives
 are stored — never the coordinates.
+
+## 12. Usage events and BQ6 (feature adoption) — Sprint 3
+
+Full contract, rules and examples: [SPRINT3_BQ6.md](./SPRINT3_BQ6.md).
+
+- `POST /api/v1/analytics/usage-events` — authenticated, **202** empty body, idempotent per account by `clientEventId`. Body: `clientEventId`, `eventType` (`SESSION_STARTED` | `FEATURE_USED`), `feature` (required only for `FEATURE_USED`), `platform`, `occurredAt` (UTC, `Z`), optional `zoneId`, `foodCategory`, `budgetBand`.
+- `GET /api/v1/analytics/feature-adoption?month=YYYY-MM` — `ANALYST` only (403 for `USER`). Returns MAU, per-feature `lowUseUsers`, `lowUseRate` and `flagged` (>= 0.80); `status` is `NO_DATA` when the month has no active users.
