@@ -36,6 +36,7 @@ npm run start:dev
 
 - [API contract](docs/API_CONTRACT.md): conventions every endpoint follows (prefix, direct responses, error format, data formats).
 - [Backend setup](docs/BACKEND_SETUP.md): requirements, environment, database, migrations, Docker, troubleshooting.
+- [Deployment (Render Free + Neon Free)](docs/DEPLOYMENT_RENDER_NEON.md): first-deployment runbook, environment template, remote migrations/seeds, verification.
 - [Issue #1 – Backend foundation](docs/ISSUE_01_BACKEND_FOUNDATION.md): what was built, decisions and validation evidence.
 - [Backend implementation](docs/BACKEND_IMPLEMENTATION.md): modules, business questions and how features fit together.
 - [Issue #2 – Authentication](docs/ISSUE_02_AUTHENTICATION.md): JWT sessions, refresh rotation, roles, seed and security checks.
