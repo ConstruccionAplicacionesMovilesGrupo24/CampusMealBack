@@ -20,8 +20,11 @@ import { ErrorCode } from '../common/enums/error-code.enum';
 import { UserRole } from '../users/enums/user-role.enum';
 import { AnalyticsService } from './analytics.service';
 import { CreateAnalyticsEventDto } from './dto/create-analytics-event.dto';
+import { CreateUsageEventDto } from './dto/create-usage-event.dto';
 import { ExplanationSelectionQueryDto } from './dto/explanation-selection-query.dto';
 import { ExplanationSelectionResponseDto } from './dto/explanation-selection-response.dto';
+import { FeatureAdoptionQueryDto } from './dto/feature-adoption-query.dto';
+import { FeatureAdoptionResponseDto } from './dto/feature-adoption-response.dto';
 
 @ApiTags('Analytics')
 @Controller('analytics')
@@ -77,5 +80,53 @@ export class AnalyticsController {
     @Query() query: ExplanationSelectionQueryDto,
   ): Promise<ExplanationSelectionResponseDto> {
     return this.analyticsService.explanationSelection(query);
+  }
+
+  @Post('usage-events')
+  @Auth()
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Record a product usage event (BQ6)',
+    description:
+      'Idempotent per account by `clientEventId`: a retry or outbox replay returns 202 again but is stored once. ' +
+      '`SESSION_STARTED` takes no feature; `FEATURE_USED` requires one. `occurredAt` (UTC) decides the month ' +
+      'the event counts in, so late syncs are attributed to when they happened. It must not be in the future ' +
+      'nor older than 90 days. No coordinates or free text are accepted.',
+  })
+  @ApiAcceptedResponse({ description: 'Event accepted (empty body).' })
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST, '/api/v1/analytics/usage-events', {
+    code: ErrorCode.VALIDATION_ERROR,
+    message: 'feature must be one of INVENTORY, RECIPES, ... for FEATURE_USED',
+  })
+  async recordUsageEvent(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateUsageEventDto,
+  ): Promise<void> {
+    await this.analyticsService.recordUsageEvent(userId, dto);
+  }
+
+  @Get('feature-adoption')
+  @Auth(UserRole.ANALYST)
+  @ApiOperation({
+    summary:
+      'BQ6: core features used fewer than two times per month by at least 80% of monthly active users (ANALYST only)',
+    description:
+      'MAU = accounts with at least one valid usage event in the month (America/Bogota). For each feature, ' +
+      'lowUseRate = MAU with fewer than 2 FEATURE_USED events ÷ MAU, counting users with zero uses. ' +
+      '`flagged` is true when lowUseRate >= 0.80. A month without active users returns status NO_DATA.',
+  })
+  @ApiOkResponse({ type: FeatureAdoptionResponseDto })
+  @ApiErrorResponse(
+    HttpStatus.BAD_REQUEST,
+    '/api/v1/analytics/feature-adoption',
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'month must be in YYYY-MM format',
+    },
+  )
+  featureAdoption(
+    @Query() query: FeatureAdoptionQueryDto,
+  ): Promise<FeatureAdoptionResponseDto> {
+    return this.analyticsService.featureAdoption(query);
   }
 }

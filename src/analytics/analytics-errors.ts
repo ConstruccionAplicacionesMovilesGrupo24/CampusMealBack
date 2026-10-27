@@ -16,3 +16,15 @@ export const invalidDateRange = () =>
     code: ErrorCode.VALIDATION_ERROR,
     message: 'from must be on or before to',
   });
+
+export const featureNotAllowedForSession = () =>
+  new BadRequestException({
+    code: ErrorCode.VALIDATION_ERROR,
+    message: 'feature must be null or omitted for SESSION_STARTED',
+  });
+
+export const occurredAtOutOfRange = (maxAgeDays: number) =>
+  new BadRequestException({
+    code: ErrorCode.VALIDATION_ERROR,
+    message: `occurredAt must not be in the future nor older than ${maxAgeDays} days`,
+  });
