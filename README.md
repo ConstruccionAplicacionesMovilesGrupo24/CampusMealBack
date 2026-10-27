@@ -13,6 +13,7 @@ npm run migration:run
 npm run seed:auth           # optional demo USER / ANALYST (needs DEMO_* passwords)
 npm run seed:restaurants    # demo restaurant catalog for BQ4/BQ5
 npm run seed:inventory      # optional demo inventory for BQ2 (after seed:auth)
+npm run seed:recipes        # recipe catalog for BQ3 (independent of the other seeds)
 npm run start:dev
 ```
 
@@ -31,6 +32,8 @@ npm run start:dev
 - Meal decisions (BQ5): `POST /api/v1/meal-decisions/compare` ranks Cook / Walk / Order.
 - Analytics (BQ8): `POST /api/v1/analytics/events` (202, idempotent by `clientEventId`),
   `GET /api/v1/analytics/explanation-selection` (`ANALYST` only).
+- Recipes (BQ3, S3-04): `GET /api/v1/recipes` returns the complete, versioned recipe catalog to any
+  authenticated user; clients evaluate BQ3 against the full inventory (see the BQ3 doc).
 
 ## Documentation
 
@@ -45,6 +48,7 @@ npm run start:dev
 - [Issue #5 – Context-aware search](docs/ISSUE_05_CONTEXT_AWARE_SEARCH.md): BQ4 search rules and verification.
 - [Issue #6 – Meal decisions](docs/ISSUE_06_MEAL_DECISIONS.md): BQ5 Cook / Walk / Order scoring.
 - [Issue #7 – Analytics](docs/ISSUE_07_ANALYTICS_BQ8.md): recommendation events and BQ8.
+- [S3-04 – Recipe catalog (BQ3)](docs/SPRINT3_BQ3.md): `GET /recipes` contract, catalog, seed, BQ3 rule and reference cases.
 
 ## Project layout
 
@@ -59,6 +63,7 @@ src/
 ├── inventory/     inventory CRUD and BQ2 expiring items (entity, repository, service)
 ├── restaurants/   restaurant catalog and context-aware search
 ├── routes/        walking-route provider adapters
+├── recipes/       BQ3 recipe catalog (GET /recipes, authored demo catalog)
 └── recommendations/ analytics/
                    feature modules (added by later issues)
 ```
