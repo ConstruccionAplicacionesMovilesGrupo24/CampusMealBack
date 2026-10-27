@@ -608,3 +608,12 @@ Full contract, rules and examples: [SPRINT3_BQ6.md](./SPRINT3_BQ6.md).
 
 - `POST /api/v1/analytics/usage-events` — authenticated, **202** empty body, idempotent per account by `clientEventId`. Body: `clientEventId`, `eventType` (`SESSION_STARTED` | `FEATURE_USED`), `feature` (required only for `FEATURE_USED`), `platform`, `occurredAt` (UTC, `Z`), optional `zoneId`, `foodCategory`, `budgetBand`.
 - `GET /api/v1/analytics/feature-adoption?month=YYYY-MM` — `ANALYST` only (403 for `USER`). Returns MAU, per-feature `lowUseUsers`, `lowUseRate` and `flagged` (>= 0.80); `status` is `NO_DATA` when the month has no active users.
+
+## 13. Recipe catalog (BQ3) — Sprint 3
+
+Full contract, catalog, compatibility rule and reference cases: [SPRINT3_BQ3.md](./SPRINT3_BQ3.md).
+
+- `GET /api/v1/recipes` — any authenticated active user (`USER` or `ANALYST`; no 403). Returns `{ contractVersion: 1, catalogVersion, generatedAt, recipes[] }` with the **complete** catalog (≤ 200 recipes); the backend filters nothing per user. Each recipe has `id` (UUID), `name`, `preparationMinutes` (1–240), `servings` (1–20), `dietaryTags`, `ingredients[]` (`name`, `normalizedName`, `aliases`, `quantity` > 0, `unit` ∈ `g`/`kg`/`ml`/`L`/`unit`, `optional`) and `steps[]` (1–15).
+- `catalogVersion` and `generatedAt` describe the catalog content (fixed per version), not the request time. A stored empty catalog returns `"recipes": []`.
+- No query parameters in contract version 1: any parameter → `400 VALIDATION_ERROR`. Not seeded yet → `503 SERVICE_UNAVAILABLE`. Auth errors as in §5.
+- BQ3 itself is evaluated by the client against the complete inventory (`GET /api/v1/inventory`).
