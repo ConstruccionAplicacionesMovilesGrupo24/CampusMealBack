@@ -4,9 +4,12 @@ import { RecommendationRun } from '../recommendations/entities/recommendation-ru
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsEvent } from './entities/analytics-event.entity';
+import { UsageEvent } from './entities/usage-event.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AnalyticsEvent, RecommendationRun])],
+  imports: [
+    TypeOrmModule.forFeature([AnalyticsEvent, UsageEvent, RecommendationRun]),
+  ],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
 })
