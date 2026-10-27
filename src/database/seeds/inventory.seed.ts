@@ -11,7 +11,7 @@ import dataSource from '../data-source';
 
 /**
  * Demo inventory for the auth seed's demo user (npm run seed:inventory), so BQ2 can be shown
- * end to end. Idempotent through fixed ids: every run rewrites those same six rows and shifts
+ * end to end. Idempotent through fixed ids: every run rewrites those same rows and shifts
  * their expiration dates relative to today in Bogotá, so the demo stays meaningful over time.
  * Rows of real users are never touched, and no password or token is printed.
  */
@@ -30,7 +30,7 @@ interface DemoInventoryItem {
 const DEFAULT_DEMO_USER_EMAIL = 'demo@campusmeal.local';
 
 // Fixed ids keep the seed idempotent without a unique constraint on (user_id, name).
-const DEMO_ITEMS: DemoInventoryItem[] = [
+const CORE_ITEMS: DemoInventoryItem[] = [
   {
     id: '3f6c0f4a-0001-4a3b-9c21-000000000001',
     name: 'Yogurt',
@@ -85,6 +85,91 @@ const DEMO_ITEMS: DemoInventoryItem[] = [
     active: false,
     note: 'inactive, excluded everywhere',
   },
+];
+
+// Extra pantry so the inventory list looks like a real kitchen. Every ACTIVE extra item expires
+// more than 3 days from today (or is already expired / inactive), so BQ2 keeps returning exactly
+// Yogurt, Whole milk and Spinach and the BQ5 Cook score stays the same.
+// Tuple: [name, quantity, unit, offsetDays, active, note]
+type ExtraItem = [string, number, string, number, boolean, string];
+
+const EXTRA_ITEMS: ExtraItem[] = [
+  ['Eggs', 12, 'units', 10, true, 'outside the 3-day window'],
+  ['Tomatoes', 6, 'units', 5, true, 'outside the 3-day window'],
+  ['Onion', 4, 'units', 14, true, 'outside the 3-day window'],
+  ['Garlic', 1, 'head', 20, true, 'outside the 3-day window'],
+  ['Carrots', 500, 'g', 9, true, 'outside the 3-day window'],
+  ['Potatoes', 2, 'kg', 25, true, 'outside the 3-day window'],
+  ['Chicken breast', 600, 'g', 4, true, 'first day outside the 3-day window'],
+  ['Ground beef', 500, 'g', 5, true, 'outside the 3-day window'],
+  ['Pasta', 500, 'g', 120, true, 'pantry staple'],
+  ['Black beans', 400, 'g', 180, true, 'pantry staple'],
+  ['Lentils', 500, 'g', 150, true, 'pantry staple'],
+  ['Olive oil', 0.5, 'L', 200, true, 'pantry staple'],
+  ['Butter', 250, 'g', 21, true, 'outside the 3-day window'],
+  ['Mozzarella', 200, 'g', 12, true, 'outside the 3-day window'],
+  ['Bananas', 6, 'units', 6, true, 'outside the 3-day window'],
+  ['Apples', 5, 'units', 12, true, 'outside the 3-day window'],
+  ['Lemons', 4, 'units', 15, true, 'outside the 3-day window'],
+  ['Avocado', 2, 'units', 5, true, 'outside the 3-day window'],
+  ['Bell pepper', 3, 'units', 7, true, 'outside the 3-day window'],
+  ['Broccoli', 1, 'head', 5, true, 'outside the 3-day window'],
+  ['Mushrooms', 250, 'g', 4, true, 'first day outside the 3-day window'],
+  ['Tortillas', 8, 'units', 8, true, 'outside the 3-day window'],
+  ['Oats', 1, 'kg', 90, true, 'pantry staple'],
+  ['Orange juice', 1, 'L', 11, true, 'outside the 3-day window'],
+  ['Tofu', 400, 'g', 13, true, 'outside the 3-day window'],
+  ['Chickpeas', 400, 'g', 160, true, 'pantry staple'],
+  ['Corn', 2, 'cans', 240, true, 'pantry staple'],
+  ['Coffee', 250, 'g', 150, true, 'pantry staple'],
+  ['Sugar', 1, 'kg', 300, true, 'pantry staple'],
+  ['Cilantro', 1, 'bunch', 4, true, 'first day outside the 3-day window'],
+  ['Lettuce', 1, 'head', 5, true, 'outside the 3-day window'],
+  ['Arepas', 6, 'units', 7, true, 'outside the 3-day window'],
+  ['Plantain', 3, 'units', 6, true, 'outside the 3-day window'],
+  ['Cucumber', 2, 'units', 7, true, 'outside the 3-day window'],
+  [
+    'Strawberries',
+    250,
+    'g',
+    -2,
+    true,
+    'already expired, listed in GET /inventory only',
+  ],
+  [
+    'Cream',
+    200,
+    'mL',
+    -3,
+    true,
+    'already expired, listed in GET /inventory only',
+  ],
+  [
+    'Fish fillet',
+    300,
+    'g',
+    -1,
+    true,
+    'already expired, listed in GET /inventory only',
+  ],
+  ['Ham', 150, 'g', -5, true, 'already expired, listed in GET /inventory only'],
+  ['Frozen peas', 500, 'g', 60, false, 'inactive, excluded everywhere'],
+  ['Honey', 350, 'g', 400, false, 'inactive, excluded everywhere'],
+];
+
+const DEMO_ITEMS: DemoInventoryItem[] = [
+  ...CORE_ITEMS,
+  ...EXTRA_ITEMS.map(
+    ([name, quantity, unit, offsetDays, active, note], index) => ({
+      id: `3f6c0f4a-0001-4a3b-9c21-${String(index + 7).padStart(12, '0')}`,
+      name,
+      quantity,
+      unit,
+      offsetDays,
+      active,
+      note,
+    }),
+  ),
 ];
 
 async function seed(): Promise<void> {
