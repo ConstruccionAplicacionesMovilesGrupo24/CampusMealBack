@@ -372,3 +372,52 @@ Pending cloud and device checks (not executed): Neon project creation; migration
 Neon; Render service creation and first deploy; every check in section E on the public URL
 (including Valhalla from Render, cold start and redeploy persistence); Android APK with the
 public URL on a physical device over mobile data.
+
+## H. S3-04 update: recipe catalog (team action)
+
+Status: **implemented and verified locally only** (see [SPRINT3_BQ3.md §6](SPRINT3_BQ3.md#6-local-verification-record-2026-10-27)).
+Until the team performs the steps below, the deployed API at `https://campusmeal-api.onrender.com`
+has no `GET /api/v1/recipes`.
+
+This release adds one additive migration (`CreateRecipeCatalog1790610000000`, table
+`recipe_catalog`) and one catalog seed. The auth, restaurant, inventory and usage seeds do **not**
+need to run again.
+
+Prerequisites: Node 24; the ignored private `.env.render` from section C.2, with
+`NODE_ENV=production` and the **direct** Neon `DATABASE_URL` (`sslmode=verify-full`); the same JWT
+secrets as in Render (never change them for this update). Check the target first (C.2), from
+the backend root, at the reviewed commit.
+
+Order:
+
+1. Review and publish the S3-04 code (team).
+2. Apply the migration and the catalog seed to Neon from a team machine (PowerShell; identical in Bash):
+
+   ```powershell
+   npm ci
+   npm run build
+   node --env-file=.env.render -e "const u = new URL(process.env.DATABASE_URL); console.log(process.env.NODE_ENV, u.hostname, u.pathname, u.searchParams.get('sslmode'))"
+   node --env-file=.env.render ./node_modules/typeorm/cli.js -d ./dist/database/data-source.js migration:show
+   node --env-file=.env.render ./node_modules/typeorm/cli.js -d ./dist/database/data-source.js migration:run
+   node --env-file=.env.render ./dist/database/seeds/recipes.seed.js
+   ```
+
+   Expected: `migration:show` lists only `[ ] CreateRecipeCatalog1790610000000` as pending;
+   `migration:run` executes it; the seed prints
+   `[seed:recipes] catalog 2026-10-27.1 (6 recipes, generatedAt 2026-10-27T12:00:00.000Z): created`.
+   Running the seed again prints `unchanged`.
+3. In Render, **Manual Deploy** of the same reviewed commit. The build and start commands do not
+   change, and they never migrate or seed.
+4. Verify on the public URL:
+   - `GET /api/v1/health` → `200 {status: ok, database: up}`;
+   - `GET /api/v1/recipes` without a token → `401 INVALID_ACCESS_TOKEN`;
+   - with a USER token → `200`, `contractVersion: 1`, `catalogVersion: "2026-10-27.1"`,
+     `generatedAt: "2026-10-27T12:00:00.000Z"`, 6 recipes; `?limit=1` → `400 VALIDATION_ERROR`;
+   - Swagger `/api/docs` shows the Recipes tag.
+
+   Record the results without tokens.
+
+If Render is deployed before the seed runs, `/recipes` answers `503 SERVICE_UNAVAILABLE`. If it is
+deployed before the migration, it answers `500`. Other endpoints are unaffected in both cases.
+Later catalog changes need a new `catalogVersion`/`generatedAt` in
+`src/recipes/demo-recipe-catalog.ts`, then a rebuild and the seed only.
