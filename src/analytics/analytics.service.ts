@@ -24,6 +24,8 @@ import {
   FeatureAdoptionResponseDto,
   FeatureAdoptionResultDto,
 } from './dto/feature-adoption-response.dto';
+import { ZoneDemandQueryDto } from './dto/zone-demand-query.dto';
+import { ZoneDemandResponseDto } from './dto/zone-demand-response.dto';
 import { AnalyticsEvent } from './entities/analytics-event.entity';
 import { UsageEvent } from './entities/usage-event.entity';
 import { AnalyticsEventType } from './enums/analytics-event-type.enum';
@@ -285,4 +287,25 @@ export class AnalyticsService {
       results,
     };
   }
+
+   zoneDemand(
+  query: ZoneDemandQueryDto,
+): Promise<ZoneDemandResponseDto> {
+  if (query.from > query.to) {
+    throw invalidDateRange();
+  }
+
+  return {
+    //contractVersion: 1,
+    from: query.from,
+    to: query.to,
+    timezone: this.timezone,
+    generatedAt: new Date().toISOString(),
+    minDistinctUsersPerCell: 5,
+    containsSyntheticData: false,
+    interpretation: 'INTEREST_INDICATORS_NOT_VERIFIED_PURCHASES',
+    suppressedCells: 0,
+    zones: [],
+  };
+}
 }

@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { DietaryTag } from '../../restaurants/enums/dietary-tag.enum';
+import { MealCategory } from '../../restaurants/enums/meal-category.enum';
 
 // Own location DTO (not reused from restaurants/) so this module doesn't depend on the
 // Restaurants module's HTTP-shaped types — same fields as SearchRestaurantsDto by contract,
@@ -78,4 +79,12 @@ export class CompareMealOptionsRequestDto {
     message: 'requestedAt must be an ISO-8601 UTC instant ending in Z',
   })
   requestedAt: string;
+
+  @ApiPropertyOptional({
+    enum: MealCategory,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsEnum(MealCategory)
+  foodCategory?: MealCategory | null;
 }

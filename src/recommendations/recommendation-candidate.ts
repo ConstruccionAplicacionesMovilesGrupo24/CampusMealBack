@@ -1,5 +1,6 @@
 import { ExplanationType } from './enums/explanation-type.enum';
 import { MealAlternative } from './enums/meal-alternative.enum';
+import { MealCategory } from '../restaurants/enums/meal-category.enum';
 
 export interface ExpiringIngredientSummary {
   itemId: string;
@@ -26,6 +27,7 @@ export interface Candidate {
   restaurantRating: number | null;
   expiringIngredients: ExpiringIngredientSummary[] | null;
   restaurant: AlternativeRestaurantSummary | null;
+  mealCategory: MealCategory | null;
 }
 
 export interface StrategyScore {

@@ -3,16 +3,16 @@ import {
   IsEnum,
   IsISO8601,
   IsOptional,
-  IsString,
   IsUUID,
   Matches,
-  MaxLength,
   ValidateIf,
 } from 'class-validator';
 import { BudgetBand } from '../enums/budget-band.enum';
 import { ClientPlatform } from '../enums/client-platform.enum';
 import { UsageEventType } from '../enums/usage-event-type.enum';
 import { UsageFeature } from '../enums/usage-feature.enum';
+import { MealCategory } from '../../restaurants/enums/meal-category.enum';
+import { AnalyticsZone } from '../enums/analytics-zone.enum';
 
 /**
  * Body of `POST analytics/usage-events`. No coordinates, tokens or free text: the global
@@ -65,18 +65,16 @@ export class CreateUsageEventDto {
       'Coarse campus zone id (BQ9 demand context). Never coordinates.',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  zoneId?: string;
+  @IsEnum(AnalyticsZone)
+  zoneId?: AnalyticsZone;
 
   @ApiPropertyOptional({
     example: 'VEGETARIAN',
     description: 'Food category explicitly requested by the user (BQ9).',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
-  foodCategory?: string;
+  @IsEnum(MealCategory)
+  foodCategory?: MealCategory;
 
   @ApiPropertyOptional({ enum: BudgetBand })
   @IsOptional()
