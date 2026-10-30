@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { DietaryTag } from '../enums/dietary-tag.enum';
+import { MealCategory } from '../enums/meal-category.enum';
 
 export class RestaurantSearchLocationDto {
   @ApiProperty({ example: 4.6025, minimum: -90, maximum: 90 })
@@ -32,6 +33,15 @@ export class RestaurantSearchLocationDto {
 }
 
 export class SearchRestaurantsDto {
+  @ApiPropertyOptional({
+    enum: MealCategory,
+    nullable: true,
+    description: 'Optional meal category explicitly requested by the user.',
+  })
+  @IsOptional()
+  @IsEnum(MealCategory)
+  foodCategory?: MealCategory | null;
+
   @ApiProperty({ type: RestaurantSearchLocationDto })
   @ValidateNested()
   @Type(() => RestaurantSearchLocationDto)

@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { ExplanationType } from '../enums/explanation-type.enum';
+import { AnalyticsZone } from '../../analytics/enums/analytics-zone.enum';
 
 /**
  * One `POST meal-decisions/compare` call. Exact user coordinates are never stored here
@@ -57,4 +58,17 @@ export class RecommendationRun {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @Column({
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  zone: AnalyticsZone | null;
+
+  @Column({
+    type: 'boolean',
+    default: false,
+  })
+  synthetic: boolean;
 }

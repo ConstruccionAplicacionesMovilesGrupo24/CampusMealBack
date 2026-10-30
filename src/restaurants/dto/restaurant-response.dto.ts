@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { RouteProviderStatus } from '../../routes/domain/route-provider.port';
 import { DietaryTag } from '../enums/dietary-tag.enum';
 import { OpeningStatus } from '../opening-hours';
-
+import { MealCategory } from '../enums/meal-category.enum';
 export class RestaurantDto {
   @ApiProperty()
   id: string;
@@ -47,6 +47,9 @@ export class MealDto {
 
   @ApiProperty({ enum: DietaryTag, isArray: true })
   dietaryTags: DietaryTag[];
+
+  @ApiProperty({ enum: MealCategory, nullable: true })
+  mealCategory: MealCategory | null;
 }
 
 export class RestaurantSearchResponseDto {

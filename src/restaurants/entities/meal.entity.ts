@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { DietaryTag } from '../enums/dietary-tag.enum';
 import { Restaurant } from './restaurant.entity';
-
+import { MealCategory } from '../enums/meal-category.enum';
 @Entity({ name: 'meals' })
 @Index('IDX_meals_restaurant_id', ['restaurantId'])
 @Check('CHK_meals_name_not_blank', `length(btrim("name")) > 0`)
@@ -36,6 +36,14 @@ export class Meal {
   /** Whole Colombian pesos (architecture doc §7 data restrictions). */
   @Column({ type: 'integer' })
   price: number;
+
+  @Column({
+    name: 'meal_category',
+    type: 'varchar',
+    length: 40,
+    nullable: true,
+  })
+  mealCategory: MealCategory | null;
 
   @Column({
     name: 'dietary_tags',

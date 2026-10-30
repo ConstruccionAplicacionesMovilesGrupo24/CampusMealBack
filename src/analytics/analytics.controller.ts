@@ -25,6 +25,8 @@ import { ExplanationSelectionQueryDto } from './dto/explanation-selection-query.
 import { ExplanationSelectionResponseDto } from './dto/explanation-selection-response.dto';
 import { FeatureAdoptionQueryDto } from './dto/feature-adoption-query.dto';
 import { FeatureAdoptionResponseDto } from './dto/feature-adoption-response.dto';
+import { ZoneDemandQueryDto } from './dto/zone-demand-query.dto';
+import { ZoneDemandResponseDto } from './dto/zone-demand-response.dto';
 
 @ApiTags('Analytics')
 @Controller('analytics')
@@ -80,6 +82,30 @@ export class AnalyticsController {
     @Query() query: ExplanationSelectionQueryDto,
   ): Promise<ExplanationSelectionResponseDto> {
     return this.analyticsService.explanationSelection(query);
+  }
+
+  @Get('zone-demand')
+  @Auth(UserRole.ANALYST)
+  @ApiOperation({
+    summary: 'BQ9: demand for each zone (ANALYST only)',
+    description:
+      'Returns aggregated restaurant demand indicators by zone, meal category, budget/price range and hour. ' +
+      '`from`/`to` are inclusive dates in America/Bogota. ' +
+      'Cells with fewer than five distinct users are suppressed.',
+  })
+  @ApiOkResponse({ type: ZoneDemandResponseDto })
+  @ApiErrorResponse(
+  HttpStatus.BAD_REQUEST,
+  '/api/v1/analytics/zone-demand',
+  {
+    code: ErrorCode.VALIDATION_ERROR,
+    message: 'from must be on or before to and the range must not exceed 92 days',
+  },
+)
+  zoneDemand(
+    @Query() query: ZoneDemandQueryDto,
+  ): Promise<ZoneDemandResponseDto> {
+    return this.analyticsService.zoneDemand(query);
   }
 
   @Post('usage-events')

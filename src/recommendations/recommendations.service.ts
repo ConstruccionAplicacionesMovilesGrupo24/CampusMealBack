@@ -4,7 +4,10 @@ import { Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { Meal } from '../restaurants/entities/meal.entity';
 import { Restaurant } from '../restaurants/entities/restaurant.entity';
-import { evaluateOpeningStatus, OpeningStatus } from '../restaurants/opening-hours';
+import {
+  evaluateOpeningStatus,
+  OpeningStatus,
+} from '../restaurants/opening-hours';
 import { ROUTE_PROVIDER_PORT } from '../routes/domain/route-provider.port';
 import type { RouteProviderPort } from '../routes/domain/route-provider.port';
 import { CompareMealOptionsRequestDto } from './dto/compare-meal-options-request.dto';
@@ -14,13 +17,18 @@ import {
 } from './dto/compare-meal-options-response.dto';
 import { ExplanationType } from './enums/explanation-type.enum';
 import { MealAlternative } from './enums/meal-alternative.enum';
-import { Candidate, RankedAlternative, ScoredCandidate } from './recommendation-candidate';
+import {
+  Candidate,
+  RankedAlternative,
+  ScoredCandidate,
+} from './recommendation-candidate';
 import { RecommendationsRepository } from './recommendations.repository';
 import { BudgetFitStrategy } from './strategies/budget-fit.strategy';
 import { ContextCompatibilityStrategy } from './strategies/context-compatibility.strategy';
 import { ExpirationPriorityStrategy } from './strategies/expiration-priority.strategy';
 import { RecommendationStrategy } from './strategies/recommendation-strategy.interface';
 import { TimeFitStrategy } from './strategies/time-fit.strategy';
+import { zoneFromCampusId } from '../analytics/enums/analytics-zone.enum';
 
 // Documented assumptions (issue #6 gives no exact formula for Cook, unlike Walk/Order which
 // reuse #5's route-based estimate):
@@ -41,7 +49,7 @@ const NO_OPTIONS_EXPLANATION =
 
 interface EligibleRestaurant {
   restaurant: Restaurant;
-  minimumMealPrice: number;
+  selectedMeal: Meal;
 }
 
 /**
@@ -77,14 +85,18 @@ export class RecommendationsService {
     const scored = candidates.map((candidate) => this.score(candidate, dto));
     const ranked = this.rank(scored);
 
-    const winner = ranked.find((alternative) => alternative.recommended) ?? null;
-    const mainExplanation = winner ? explanationText(winner) : NO_OPTIONS_EXPLANATION;
+    const winner =
+      ranked.find((alternative) => alternative.recommended) ?? null;
+    const mainExplanation = winner
+      ? explanationText(winner)
+      : NO_OPTIONS_EXPLANATION;
     const supportingReasons = winner ? supportingReasonsFor(winner) : [];
 
     const recommendationId = await this.recommendationsRepository.saveRun(
       userId,
       dto.availableMinutes,
       dto.maximumBudget,
+      zoneFromCampusId(dto.campusId),
       mainExplanation,
       winner?.explanationType ?? null,
       ranked,
@@ -111,7 +123,10 @@ export class RecommendationsService {
 
     const eligibleRestaurants = await this.eligibleRestaurants(dto);
 
-    const walkCandidate = await this.buildWalkCandidate(eligibleRestaurants, dto);
+    const walkCandidate = await this.buildWalkCandidate(
+      eligibleRestaurants,
+      dto,
+    );
     if (walkCandidate) {
       candidates.push(walkCandidate);
     }
@@ -157,6 +172,7 @@ export class RecommendationsService {
         remainingDays: item.remainingDays,
       })),
       restaurant: null,
+      mealCategory: null,
     };
   }
 
@@ -168,7 +184,9 @@ export class RecommendationsService {
     const restaurants = await this.restaurantRepository.find({
       where: { active: true },
     });
-    const meals = await this.mealRepository.find({ where: { available: true } });
+    const meals = await this.mealRepository.find({
+      where: { available: true },
+    });
     const mealsByRestaurant = groupMeals(meals);
 
     const eligible: EligibleRestaurant[] = [];
@@ -185,15 +203,24 @@ export class RecommendationsService {
           meal.price <= dto.maximumBudget &&
           dto.dietaryPreferences.every((preference) =>
             meal.dietaryTags.includes(preference),
-          ),
+          ) &&
+          (!dto.foodCategory || meal.mealCategory === dto.foodCategory),
       );
+
       if (matchingMeals.length === 0) {
         continue;
       }
 
+      const selectedMeal = [...matchingMeals].sort(
+        (a, b) =>
+          a.price - b.price ||
+          a.name.localeCompare(b.name) ||
+          a.id.localeCompare(b.id),
+      )[0];
+
       eligible.push({
         restaurant,
-        minimumMealPrice: Math.min(...matchingMeals.map((meal) => meal.price)),
+        selectedMeal,
       });
     }
     return eligible;
@@ -216,11 +243,15 @@ export class RecommendationsService {
       })),
     );
 
-    let best: { candidate: EligibleRestaurant; walkingMinutes: number; totalMinutes: number } | null =
-      null;
+    let best: {
+      candidate: EligibleRestaurant;
+      walkingMinutes: number;
+      totalMinutes: number;
+    } | null = null;
 
     for (let index = 0; index < eligible.length; index += 1) {
-      const walkingMinutes = routeResult.estimates[index]?.walkingMinutes ?? null;
+      const walkingMinutes =
+        routeResult.estimates[index]?.walkingMinutes ?? null;
       if (walkingMinutes === null) {
         continue;
       }
@@ -242,7 +273,7 @@ export class RecommendationsService {
     return {
       type: MealAlternative.WALK,
       estimatedMinutes: totalMinutes,
-      estimatedCost: candidate.minimumMealPrice,
+      estimatedCost: candidate.selectedMeal.price,
       expiringIngredientCount: 0,
       restaurantRating: candidate.restaurant.averageRating,
       expiringIngredients: null,
@@ -253,6 +284,7 @@ export class RecommendationsService {
         deliveryMinutes: null,
         deliveryFee: null,
       },
+      mealCategory: candidate.selectedMeal.mealCategory,
     };
   }
 
@@ -267,7 +299,7 @@ export class RecommendationsService {
         candidate.restaurant.deliveryAvailable &&
         candidate.restaurant.estimatedDeliveryMinutes !== null &&
         candidate.restaurant.estimatedDeliveryMinutes <= dto.availableMinutes &&
-        candidate.minimumMealPrice + fee <= dto.maximumBudget
+        candidate.selectedMeal.price + fee <= dto.maximumBudget
       );
     });
     if (deliverable.length === 0) {
@@ -285,7 +317,7 @@ export class RecommendationsService {
     return {
       type: MealAlternative.ORDER,
       estimatedMinutes: best.restaurant.estimatedDeliveryMinutes as number,
-      estimatedCost: best.minimumMealPrice + deliveryFee,
+      estimatedCost: best.selectedMeal.price + deliveryFee,
       expiringIngredientCount: 0,
       restaurantRating: best.restaurant.averageRating,
       expiringIngredients: null,
@@ -296,6 +328,7 @@ export class RecommendationsService {
         deliveryMinutes: best.restaurant.estimatedDeliveryMinutes,
         deliveryFee: best.restaurant.deliveryFee,
       },
+      mealCategory: best.selectedMeal.mealCategory,
     };
   }
 
@@ -364,31 +397,41 @@ function isBetterWalk(
   if (totalMinutes !== current.totalMinutes) {
     return totalMinutes < current.totalMinutes;
   }
-  if (candidate.minimumMealPrice !== current.candidate.minimumMealPrice) {
-    return candidate.minimumMealPrice < current.candidate.minimumMealPrice;
+  if (candidate.selectedMeal.price !== current.candidate.selectedMeal.price) {
+    return candidate.selectedMeal.price < current.candidate.selectedMeal.price;
   }
   if (
-    candidate.restaurant.averageRating !== current.candidate.restaurant.averageRating
+    candidate.restaurant.averageRating !==
+    current.candidate.restaurant.averageRating
   ) {
-    return candidate.restaurant.averageRating > current.candidate.restaurant.averageRating;
+    return (
+      candidate.restaurant.averageRating >
+      current.candidate.restaurant.averageRating
+    );
   }
-  return candidate.restaurant.name.localeCompare(current.candidate.restaurant.name) < 0;
+  return (
+    candidate.restaurant.name.localeCompare(current.candidate.restaurant.name) <
+    0
+  );
 }
 
 function isBetterOrder(
   candidate: EligibleRestaurant,
   current: EligibleRestaurant,
 ): boolean {
-  const candidateMinutes = candidate.restaurant.estimatedDeliveryMinutes as number;
+  const candidateMinutes = candidate.restaurant
+    .estimatedDeliveryMinutes as number;
   const currentMinutes = current.restaurant.estimatedDeliveryMinutes as number;
   if (candidateMinutes !== currentMinutes) {
     return candidateMinutes < currentMinutes;
   }
-  if (candidate.minimumMealPrice !== current.minimumMealPrice) {
-    return candidate.minimumMealPrice < current.minimumMealPrice;
+  if (candidate.selectedMeal.price !== current.selectedMeal.price) {
+    return candidate.selectedMeal.price < current.selectedMeal.price;
   }
   if (candidate.restaurant.averageRating !== current.restaurant.averageRating) {
-    return candidate.restaurant.averageRating > current.restaurant.averageRating;
+    return (
+      candidate.restaurant.averageRating > current.restaurant.averageRating
+    );
   }
   return candidate.restaurant.name.localeCompare(current.restaurant.name) < 0;
 }
@@ -410,9 +453,15 @@ function buildMetadata(
   candidate: ScoredCandidate,
 ): Record<string, unknown> | null {
   if (candidate.type === MealAlternative.COOK) {
-    return { expiringIngredients: candidate.expiringIngredients };
+    return {
+      expiringIngredients: candidate.expiringIngredients,
+    };
   }
-  return { restaurant: candidate.restaurant };
+
+  return {
+    restaurant: candidate.restaurant,
+    mealCategory: candidate.mealCategory,
+  };
 }
 
 function toAlternativeDto(

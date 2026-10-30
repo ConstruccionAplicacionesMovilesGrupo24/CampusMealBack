@@ -63,7 +63,8 @@ export class RestaurantsService {
       const eligibleMeals = (mealsByRestaurant.get(restaurant.id) ?? []).filter(
         (meal) =>
           meal.price <= dto.maximumBudget &&
-          matchesDietaryPreferences(meal, dto.dietaryPreferences),
+          matchesDietaryPreferences(meal, dto.dietaryPreferences) &&
+          (!dto.foodCategory || meal.mealCategory === dto.foodCategory),
       );
       if (eligibleMeals.length === 0) {
         continue;
@@ -240,6 +241,7 @@ function toMealDto(meal: Meal): MealDto {
     name: meal.name,
     price: meal.price,
     dietaryTags: [...meal.dietaryTags].sort(),
+    mealCategory: meal.mealCategory,
   };
 }
 

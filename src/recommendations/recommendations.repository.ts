@@ -5,6 +5,7 @@ import { RecommendationAlternative } from './entities/recommendation-alternative
 import { RecommendationRun } from './entities/recommendation-run.entity';
 import { ExplanationType } from './enums/explanation-type.enum';
 import { RankedAlternative } from './recommendation-candidate';
+import { AnalyticsZone } from '../analytics/enums/analytics-zone.enum';
 
 @Injectable()
 export class RecommendationsRepository {
@@ -20,6 +21,7 @@ export class RecommendationsRepository {
     userId: string,
     availableMinutes: number,
     maximumBudget: number,
+    zone: AnalyticsZone,
     mainExplanation: string,
     explanationType: ExplanationType | null,
     alternatives: RankedAlternative[],
@@ -29,6 +31,7 @@ export class RecommendationsRepository {
         userId,
         availableMinutes,
         maximumBudget,
+        zone,
         mainExplanation,
         explanationType,
       }),

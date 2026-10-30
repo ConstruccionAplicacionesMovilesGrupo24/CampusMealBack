@@ -4,6 +4,7 @@ import { Meal } from '../../restaurants/entities/meal.entity';
 import { Restaurant } from '../../restaurants/entities/restaurant.entity';
 import { OpeningPeriod } from '../../restaurants/opening-period';
 import dataSource from '../data-source';
+import { MealCategory } from '../../restaurants/enums/meal-category.enum';
 
 /**
  * Creates a small restaurant catalog near Universidad de los Andes
@@ -17,6 +18,7 @@ interface DemoMeal {
   name: string;
   price: number;
   dietaryTags: DietaryTag[];
+  mealCategory: MealCategory;
 }
 
 interface DemoRestaurant {
@@ -57,11 +59,17 @@ const DEMO_RESTAURANTS: DemoRestaurant[] = [
     estimatedDeliveryMinutes: 35,
     deliveryFee: 4500,
     meals: [
-      { name: 'Vegetarian bowl', price: 17000, dietaryTags: [DietaryTag.VEGETARIAN] },
+      {
+        name: 'Vegetarian bowl',
+        price: 17000,
+        dietaryTags: [DietaryTag.VEGETARIAN],
+        mealCategory: MealCategory.BOWLS,
+      },
       {
         name: 'Vegan power bowl',
         price: 19000,
         dietaryTags: [DietaryTag.VEGAN, DietaryTag.GLUTEN_FREE],
+        mealCategory: MealCategory.BOWLS,
       },
     ],
   },
@@ -81,8 +89,14 @@ const DEMO_RESTAURANTS: DemoRestaurant[] = [
         name: "Today's vegetarian menu",
         price: 14500,
         dietaryTags: [DietaryTag.VEGETARIAN],
+        mealCategory: MealCategory.HOME_STYLE,
       },
-      { name: 'Grilled chicken menu', price: 15500, dietaryTags: [] },
+      {
+        name: 'Grilled chicken menu',
+        price: 15500,
+        dietaryTags: [],
+        mealCategory: MealCategory.HOME_STYLE,
+      },
     ],
   },
   {
@@ -97,8 +111,18 @@ const DEMO_RESTAURANTS: DemoRestaurant[] = [
     estimatedDeliveryMinutes: 40,
     deliveryFee: 5000,
     meals: [
-      { name: 'Ajiaco santafereño', price: 16000, dietaryTags: [] },
-      { name: 'Bandeja paisa', price: 18000, dietaryTags: [] },
+      {
+        name: 'Ajiaco santafereño',
+        price: 16000,
+        dietaryTags: [],
+        mealCategory: MealCategory.SOUPS,
+      },
+      {
+        name: 'Bandeja paisa',
+        price: 18000,
+        dietaryTags: [],
+        mealCategory: MealCategory.RICE_DISHES,
+      },
     ],
   },
   {
@@ -113,11 +137,17 @@ const DEMO_RESTAURANTS: DemoRestaurant[] = [
     estimatedDeliveryMinutes: 30,
     deliveryFee: 4000,
     meals: [
-      { name: 'California roll combo', price: 22000, dietaryTags: [] },
+      {
+        name: 'California roll combo',
+        price: 22000,
+        dietaryTags: [],
+        mealCategory: MealCategory.SUSHI,
+      },
       {
         name: 'Vegetable roll combo',
         price: 20000,
         dietaryTags: [DietaryTag.VEGETARIAN, DietaryTag.VEGAN],
+        mealCategory: MealCategory.SUSHI,
       },
     ],
   },
@@ -137,6 +167,7 @@ const DEMO_RESTAURANTS: DemoRestaurant[] = [
         name: 'Quinoa salad',
         price: 13000,
         dietaryTags: [DietaryTag.VEGAN, DietaryTag.GLUTEN_FREE],
+        mealCategory: MealCategory.SALADS,
       },
     ],
   },
@@ -179,6 +210,7 @@ async function seed(): Promise<void> {
             name: meal.name,
             price: meal.price,
             dietaryTags: meal.dietaryTags,
+            mealCategory: meal.mealCategory,
           }),
         );
       }
