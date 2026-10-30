@@ -44,6 +44,30 @@ interface FeatureAdoptionRow {
   mau: string;
 }
 
+interface UsageDemandRow {
+  user_id: string;
+  feature: UsageFeature;
+  zone_id: string | null;
+  food_category: string | null;
+  budget_band: string | null;
+  hour: number;
+  synthetic: boolean;
+}
+
+interface SelectionDemandRow {
+  user_id: string;
+  zone: string | null;
+  meal_category: string | null;
+  estimated_cost: number | string;
+  hour: number;
+  synthetic: boolean;
+}
+
+interface MutableZone {
+  usage: UsageDemandRow[];
+  selection: SelectionDemandRow[];
+}
+
 /** BQ6 thresholds: low use = fewer than 2 uses; flagged at 80% of monthly active users. */
 const LOW_USE_BELOW_USES = 2;
 const ADOPTION_THRESHOLD = 0.8;
@@ -288,24 +312,440 @@ export class AnalyticsService {
     };
   }
 
-   zoneDemand(
-  query: ZoneDemandQueryDto,
-): Promise<ZoneDemandResponseDto> {
-  if (query.from > query.to) {
-    throw invalidDateRange();
-  }
+  async zoneDemand(query: ZoneDemandQueryDto): Promise<ZoneDemandResponseDto> {
+    if (query.from > query.to) {
+      throw invalidDateRange();
+    }
 
-  return {
-    //contractVersion: 1,
-    from: query.from,
-    to: query.to,
-    timezone: this.timezone,
-    generatedAt: new Date().toISOString(),
-    minDistinctUsersPerCell: 5,
-    containsSyntheticData: false,
-    interpretation: 'INTEREST_INDICATORS_NOT_VERIFIED_PURCHASES',
-    suppressedCells: 0,
-    zones: [],
-  };
-}
+    const fromDate = new Date(`${query.from}T00:00:00Z`);
+    const toDate = new Date(`${query.to}T00:00:00Z`);
+
+    const days =
+      Math.floor(
+        (toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000),
+      ) + 1;
+
+    if (!Number.isFinite(days) || days < 1 || days > 92) {
+      throw invalidDateRange();
+    }
+
+    // 1. Consultar eventos de uso
+    const usageRows: UsageDemandRow[] = await this.dataSource.query(
+      `
+      SELECT
+        ue.user_id::text AS user_id,
+        ue.feature,
+        ue.zone_id,
+        ue.food_category,
+        ue.budget_band,
+        EXTRACT(
+          HOUR FROM ue.occurred_at AT TIME ZONE $3
+        )::integer AS hour,
+        COALESCE(ue.synthetic, false) AS synthetic
+      FROM usage_events ue
+      WHERE ue.event_type = 'FEATURE_USED'
+        AND ue.feature IN (
+          'RESTAURANT_SEARCH',
+          'RESTAURANT_DETAIL'
+        )
+        AND ue.user_id IS NOT NULL
+        AND ue.occurred_at >= (
+          $1::date::timestamp AT TIME ZONE $3
+        )
+        AND ue.occurred_at < (
+          ($2::date + 1)::timestamp AT TIME ZONE $3
+        )
+      `,
+      [query.from, query.to, this.timezone],
+    );
+
+    // 2. Consultar recomendaciones seleccionadas
+    const selectionRows: SelectionDemandRow[] = await this.dataSource.query(
+      `
+    SELECT
+      ae.user_id::text AS user_id,
+      rr.zone,
+      ra.metadata ->> 'mealCategory' AS meal_category,
+      ra.estimated_cost,
+      EXTRACT(
+        HOUR FROM ae.occurred_at AT TIME ZONE $3
+      )::integer AS hour,
+      COALESCE(rr.synthetic, false) AS synthetic
+    FROM analytics_events ae
+    JOIN recommendation_runs rr
+      ON rr.id = ae.recommendation_id
+    JOIN recommendation_alternatives ra
+      ON ra.recommendation_id = ae.recommendation_id
+    AND ra.type = ae.selected_alternative
+    WHERE ae.event_type = 'RECOMMENDATION_SELECTED'
+      AND ae.selected_alternative IN ('WALK', 'ORDER')
+      AND (ae.occurred_at AT TIME ZONE $3)::date
+          BETWEEN $1::date AND $2::date
+      `,
+      [query.from, query.to, this.timezone],
+    );
+
+    // 3. Organizar los eventos por zona
+    const zones = new Map<string, MutableZone>();
+
+    const getOrCreateZone = (zoneName: string): MutableZone => {
+      const existing = zones.get(zoneName);
+
+      if (existing) {
+        return existing;
+      }
+
+      const created: MutableZone = {
+        usage: [],
+        selection: [],
+      };
+
+      zones.set(zoneName, created);
+      return created;
+    };
+
+    for (const row of usageRows) {
+      const zoneName = row.zone_id ?? 'unknown';
+      getOrCreateZone(zoneName).usage.push(row);
+    }
+
+    for (const row of selectionRows) {
+      const zoneName = row.zone ?? 'unknown';
+      getOrCreateZone(zoneName).selection.push(row);
+    }
+
+    // 4. Detectar datos sintéticos
+    const containsSyntheticData =
+      usageRows.some((row) => row.synthetic) ||
+      selectionRows.some((row) => row.synthetic);
+
+    const MIN_USERS = 5;
+    let suppressedCells = 0;
+
+    // 5. Estructura interna para agrupar eventos
+    type Bucket = {
+      count: number;
+      users: Set<string>;
+    };
+
+    type InteractionBucket = {
+      detailOpenings: number;
+      selections: number;
+      users: Set<string>;
+    };
+
+    type HourBucket = {
+      searches: number;
+      detailOpenings: number;
+      selections: number;
+      users: Set<string>;
+    };
+
+    const createBucket = (): Bucket => ({
+      count: 0,
+      users: new Set<string>(),
+    });
+
+    const getBucket = (map: Map<string, Bucket>, key: string): Bucket => {
+      let bucket = map.get(key);
+
+      if (!bucket) {
+        bucket = createBucket();
+        map.set(key, bucket);
+      }
+
+      return bucket;
+    };
+
+    const getInteractionBucket = (
+      map: Map<string, InteractionBucket>,
+      key: string,
+    ): InteractionBucket => {
+      let bucket = map.get(key);
+
+      if (!bucket) {
+        bucket = {
+          detailOpenings: 0,
+          selections: 0,
+          users: new Set<string>(),
+        };
+
+        map.set(key, bucket);
+      }
+
+      return bucket;
+    };
+
+    const getHourBucket = (
+      map: Map<string, HourBucket>,
+      key: string,
+    ): HourBucket => {
+      let bucket = map.get(key);
+
+      if (!bucket) {
+        bucket = {
+          searches: 0,
+          detailOpenings: 0,
+          selections: 0,
+          users: new Set<string>(),
+        };
+
+        map.set(key, bucket);
+      }
+
+      return bucket;
+    };
+
+    const addEvent = (bucket: Bucket, userId: string): void => {
+      bucket.count++;
+      bucket.users.add(userId);
+    };
+
+    const protectBucket = (bucket: Bucket) => {
+      const suppressed = bucket.users.size < MIN_USERS;
+
+      if (suppressed) {
+        suppressedCells++;
+      }
+
+      return {
+        count: suppressed ? null : bucket.count,
+        distinctUsers: suppressed ? null : bucket.users.size,
+        suppressed,
+      };
+    };
+    // Normalizar categorías vacías
+    const normalize = (value: string | null | undefined): string => {
+      return value?.trim() || 'unknown';
+    };
+
+    // Rango de precio de la alternativa
+    const getPriceBand = (
+      value: number | string | null | undefined,
+    ): string => {
+      if (value === null || value === undefined) {
+        return 'unknown';
+      }
+
+      const price = Number(value);
+
+      if (!Number.isFinite(price) || price < 0) {
+        return 'unknown';
+      }
+
+      if (price <= 15000) {
+        return 'LOW';
+      }
+
+      if (price <= 25000) {
+        return 'MEDIUM';
+      }
+
+      return 'HIGH';
+    };
+
+    // 6. Calcular estadísticas para cada zona
+    const finalizedZones = Array.from(zones.entries()).map(
+      ([zoneName, zoneData]) => {
+        const searchBucket = createBucket();
+        const detailBucket = createBucket();
+        const selectionBucket = createBucket();
+
+        const allUsers = new Set<string>();
+
+        const categoryBuckets = new Map<string, Bucket>();
+        const budgetBuckets = new Map<string, Bucket>();
+
+        const priceBuckets = new Map<string, InteractionBucket>();
+
+        const hourBuckets = new Map<string, HourBucket>();
+
+        // Eventos de uso
+        for (const row of zoneData.usage) {
+          const userId = String(row.user_id);
+
+          allUsers.add(userId);
+
+          if (row.feature === UsageFeature.RESTAURANT_SEARCH) {
+            addEvent(searchBucket, userId);
+
+            const budget = normalize(row.budget_band);
+
+            addEvent(getBucket(budgetBuckets, budget), userId);
+          }
+
+          if (row.feature === UsageFeature.RESTAURANT_DETAIL) {
+            addEvent(detailBucket, userId);
+
+            const range = normalize(row.budget_band);
+
+            const priceBucket = getInteractionBucket(priceBuckets, range);
+
+            priceBucket.detailOpenings++;
+            priceBucket.users.add(userId);
+          }
+
+          const hour = Number(row.hour);
+
+          if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+            const hourBucket = getHourBucket(hourBuckets, String(hour));
+
+            if (row.feature === UsageFeature.RESTAURANT_SEARCH) {
+              hourBucket.searches++;
+            }
+
+            if (row.feature === UsageFeature.RESTAURANT_DETAIL) {
+              hourBucket.detailOpenings++;
+            }
+
+            hourBucket.users.add(userId);
+          }
+        }
+
+        // Selecciones WALK / ORDER
+        for (const row of zoneData.selection) {
+          const userId = String(row.user_id);
+
+          allUsers.add(userId);
+          addEvent(selectionBucket, userId);
+
+          const category = normalize(row.meal_category);
+
+          addEvent(getBucket(categoryBuckets, category), userId);
+
+          const priceRange = getPriceBand(row.estimated_cost);
+
+          const priceBucket = getInteractionBucket(priceBuckets, priceRange);
+
+          priceBucket.selections++;
+          priceBucket.users.add(userId);
+
+          const hour = Number(row.hour);
+
+          if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+            const hourBucket = getHourBucket(hourBuckets, String(hour));
+
+            hourBucket.selections++;
+            hourBucket.users.add(userId);
+          }
+        }
+
+        const totalsSuppressed = allUsers.size < MIN_USERS;
+
+        if (totalsSuppressed) {
+          suppressedCells++;
+        }
+
+        const totals = {
+          searches: totalsSuppressed ? null : searchBucket.count,
+
+          detailOpenings: totalsSuppressed ? null : detailBucket.count,
+
+          selections: totalsSuppressed ? null : selectionBucket.count,
+
+          distinctUsers: totalsSuppressed ? null : allUsers.size,
+
+          suppressed: totalsSuppressed,
+        };
+
+        // Si toda la zona se suprime, no exponemos breakdowns
+        if (totalsSuppressed) {
+          return {
+            zone: zoneName,
+            totals,
+            categories: [],
+            searchedBudgetRanges: [],
+            interactionPriceRanges: [],
+            hours: [],
+          };
+        }
+
+        const categories = Array.from(categoryBuckets.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([category, bucket]) => {
+            const protectedBucket = protectBucket(bucket);
+
+            return {
+              category,
+              selections: protectedBucket.count,
+              distinctUsers: protectedBucket.distinctUsers,
+              suppressed: protectedBucket.suppressed,
+            };
+          });
+
+        const searchedBudgetRanges = Array.from(budgetBuckets.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([range, bucket]) => {
+            const protectedBucket = protectBucket(bucket);
+
+            return {
+              range,
+              searches: protectedBucket.count,
+              distinctUsers: protectedBucket.distinctUsers,
+              suppressed: protectedBucket.suppressed,
+            };
+          });
+
+        const interactionPriceRanges = Array.from(priceBuckets.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([range, bucket]) => {
+            const suppressed = bucket.users.size < MIN_USERS;
+
+            if (suppressed) {
+              suppressedCells++;
+            }
+
+            return {
+              range,
+              detailOpenings: suppressed ? null : bucket.detailOpenings,
+              selections: suppressed ? null : bucket.selections,
+              distinctUsers: suppressed ? null : bucket.users.size,
+              suppressed,
+            };
+          });
+
+        const hours = Array.from(hourBuckets.entries())
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([hour, bucket]) => {
+            const suppressed = bucket.users.size < MIN_USERS;
+
+            if (suppressed) {
+              suppressedCells++;
+            }
+
+            return {
+              hour: Number(hour),
+              searches: suppressed ? null : bucket.searches,
+              detailOpenings: suppressed ? null : bucket.detailOpenings,
+              selections: suppressed ? null : bucket.selections,
+              distinctUsers: suppressed ? null : bucket.users.size,
+              suppressed,
+            };
+          });
+
+        return {
+          zone: zoneName,
+          totals,
+          categories,
+          searchedBudgetRanges,
+          interactionPriceRanges,
+          hours,
+        };
+      },
+    );
+
+    // 14. Construir la respuesta
+    return {
+      contractVersion: 1,
+      from: query.from,
+      to: query.to,
+      timezone: this.timezone,
+      generatedAt: new Date().toISOString(),
+      minDistinctUsersPerCell: MIN_USERS,
+      containsSyntheticData,
+      interpretation: 'INTEREST_INDICATORS_NOT_VERIFIED_PURCHASES',
+      suppressedCells,
+      zones: finalizedZones,
+    };
+  }
 }

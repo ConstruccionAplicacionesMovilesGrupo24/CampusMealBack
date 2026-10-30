@@ -87,21 +87,21 @@ export class AnalyticsController {
   @Get('zone-demand')
   @Auth(UserRole.ANALYST)
   @ApiOperation({
-    summary: 'BQ7: demand for each zone (ANALYST only)',
+    summary: 'BQ9: demand for each zone (ANALYST only)',
     description:
-      'Returns the demand for each zone within the specified date range. ' +
+      'Returns aggregated restaurant demand indicators by zone, meal category, budget/price range and hour. ' +
       '`from`/`to` are inclusive dates in America/Bogota. ' +
-      'Ordered by demand descending.',
+      'Cells with fewer than five distinct users are suppressed.',
   })
   @ApiOkResponse({ type: ZoneDemandResponseDto })
   @ApiErrorResponse(
-    HttpStatus.BAD_REQUEST,
-    '/api/v1/analytics/zone-demand',
-    {
-      code: ErrorCode.VALIDATION_ERROR,
-      message: 'from must be on or before to',
-    },
-  )
+  HttpStatus.BAD_REQUEST,
+  '/api/v1/analytics/zone-demand',
+  {
+    code: ErrorCode.VALIDATION_ERROR,
+    message: 'from must be on or before to and the range must not exceed 92 days',
+  },
+)
   zoneDemand(
     @Query() query: ZoneDemandQueryDto,
   ): Promise<ZoneDemandResponseDto> {

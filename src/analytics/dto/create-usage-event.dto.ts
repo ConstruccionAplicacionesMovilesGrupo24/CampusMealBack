@@ -60,7 +60,7 @@ export class CreateUsageEventDto {
   occurredAt: string;
 
   @ApiPropertyOptional({
-    example: 'campus-001',
+    example: 'bogota-centro',
     description:
       'Coarse campus zone id (BQ9 demand context). Never coordinates.',
   })
@@ -68,8 +68,8 @@ export class CreateUsageEventDto {
   @IsEnum(AnalyticsZone)
   zoneId?: AnalyticsZone;
 
-  @ApiPropertyOptional({
-    example: 'VEGETARIAN',
+ @ApiPropertyOptional({
+    example: 'BOWLS',
     description: 'Food category explicitly requested by the user (BQ9).',
   })
   @IsOptional()
