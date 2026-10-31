@@ -130,4 +130,43 @@ The response must include:
 - generation timestamp
 - `minDistinctUsersPerCell = 5`
 - `containsSyntheticData = true`
-- the interpretation `INTEREST_INDICATORS_NOT_VERIFIED
+- `interpretation = INTEREST_INDICATORS_NOT_VERIFIED_PURCHASES`
+- separate counts for searches, detail openings, and selections
+- explicit suppression of cells below the privacy threshold
+
+## Deployment verification
+
+Verified against the deployed API at `https://campusmeal-api.onrender.com` using an `ANALYST` account and the synthetic dataset for `2026-10-30`.
+
+Request:
+
+```text
+GET /api/v1/analytics/zone-demand?from=2026-10-30&to=2026-10-30
+```
+
+Observed:
+
+- HTTP 200
+- `contractVersion: 1`
+- `timezone: America/Bogota`
+- `containsSyntheticData: true`
+- `minDistinctUsersPerCell: 5`
+- `suppressedCells: 8`
+- `interpretation: INTEREST_INDICATORS_NOT_VERIFIED_PURCHASES`
+- `bogota-centro`: 16 searches, 16 detail openings, 14 selections, 6 distinct users
+- `bogota-chapinero`: 14 searches, 14 detail openings, 14 selections, 5 distinct users
+- BOWLS and SUSHI tied at 5 selections in both zones
+- SALADS was suppressed because fewer than 5 distinct users contributed
+- HIGH searched-budget and interaction-price cells were suppressed
+- 18:00 cells were suppressed
+- LOW and MEDIUM cells remained visible
+
+The observed deployed results match the manually calculated expectations of the deterministic synthetic fixture.
+
+For the deployed Neon database, the fixture was executed from the compiled production build with:
+
+```bash
+node --env-file=.env.render dist/database/seeds/bq9.seed.js
+```
+
+The deployment was then validated through the public Render API. No database credentials, JWT signing secrets, access tokens, or test passwords are stored in this document.
