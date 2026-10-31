@@ -33,7 +33,9 @@
     "seed:usage": "ts-node src/database/seeds/usage.seed.ts",
     "seed:usage:prod": "node dist/database/seeds/usage.seed.js",
     "seed:recipes": "ts-node src/database/seeds/recipes.seed.ts",
-    "seed:recipes:prod": "node dist/database/seeds/recipes.seed.js"
+    "seed:recipes:prod": "node dist/database/seeds/recipes.seed.js",
+    "seed:bq9": "ts-node src/database/seeds/bq9.seed.ts",
+    "seed:bq9:prod": "node dist/database/seeds/bq9.seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.5",
