@@ -617,3 +617,12 @@ Full contract, catalog, compatibility rule and reference cases: [SPRINT3_BQ3.md]
 - `catalogVersion` and `generatedAt` describe the catalog content (fixed per version), not the request time. A stored empty catalog returns `"recipes": []`.
 - No query parameters in contract version 1: any parameter → `400 VALIDATION_ERROR`. Not seeded yet → `503 SERVICE_UNAVAILABLE`. Auth errors as in §5.
 - BQ3 itself is evaluated by the client against the complete inventory (`GET /api/v1/inventory`).
+
+## 14. Restaurant reviews and BQ13 (menu freshness) — Sprint 4
+
+Full contract, formulas, synthetic expected values and limitations: [SPRINT4_BQ13_REVIEWS.md](./SPRINT4_BQ13_REVIEWS.md).
+
+- `POST /api/v1/restaurants/{restaurantId}/reviews` — authenticated. Body: `clientReviewId` (UUID), `overall`, `portion`, `taste`, `freshness`, `value` (integers 1–5), `waitMinutes` (0–180), `occurredAt` (UTC, `Z`, ≤ 5 min in the future, ≤ 30 days old). **201** stored; **200** same body for an idempotent replay of the same `clientReviewId`; **409** `CLIENT_REVIEW_ID_CONFLICT` (same id, different content) or `REVIEW_ALREADY_SUBMITTED_TODAY` (one review per user, restaurant and America/Bogota day); **404** `RESTAURANT_NOT_FOUND`.
+- `GET /api/v1/restaurants/{restaurantId}/reviews?limit=20&includeSynthetic=false` — authenticated. Summary means and recent reviews (no author). Everything is withheld with 1–4 distinct reviewers; the catalog `averageRating` is returned separately as `catalogRating` (`provenance: CATALOG_SEED`).
+- `GET /api/v1/analytics/partner-health?from=YYYY-MM-DD&to=YYYY-MM-DD&includeSynthetic=false` — `ANALYST` only (403 for `USER`). Per active restaurant: `menuStatus` (`FRESH` | `STALE` | `UNKNOWN`), revision counts, exposures, selections, selection rate and review aggregates; FRESH/STALE/UNKNOWN cohorts; Spearman associations or `INSUFFICIENT_DATA`.
+- Menu edits have no HTTP endpoint: `npm run menu:edit` is the only writer and records each effective edit in `menu_revisions`.

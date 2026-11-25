@@ -10,6 +10,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { RoutesModule } from './routes/routes.module';
 import { UsersModule } from './users/users.module';
 
@@ -31,6 +32,7 @@ import { UsersModule } from './users/users.module';
     RecommendationsModule,
     AnalyticsModule,
     RecipesModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}
