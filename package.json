@@ -39,7 +39,8 @@
     "seed:bq13": "ts-node src/database/seeds/bq13.seed.ts",
     "seed:bq13:prod": "node dist/database/seeds/bq13.seed.js",
     "menu:edit": "ts-node src/database/scripts/menu-edit.ts",
-    "menu:edit:prod": "node dist/database/scripts/menu-edit.js"
+    "menu:edit:prod": "node dist/database/scripts/menu-edit.js",
+    "reviews:demo": "node scripts/demo-reviews.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.5",
