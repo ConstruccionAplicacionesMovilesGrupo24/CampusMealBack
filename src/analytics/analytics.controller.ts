@@ -20,6 +20,7 @@ import { ErrorCode } from '../common/enums/error-code.enum';
 import { UserRole } from '../users/enums/user-role.enum';
 import { AnalyticsService } from './analytics.service';
 import { CreateAnalyticsEventDto } from './dto/create-analytics-event.dto';
+import { CreatePerformanceEventDto } from './dto/create-performance-event.dto';
 import { CreateUsageEventDto } from './dto/create-usage-event.dto';
 import { ExplanationSelectionQueryDto } from './dto/explanation-selection-query.dto';
 import { ExplanationSelectionResponseDto } from './dto/explanation-selection-response.dto';
@@ -30,6 +31,9 @@ import { ZoneDemandResponseDto } from './dto/zone-demand-response.dto';
 import { PartnerHealthQueryDto } from './dto/partner-health-query.dto';
 import { PartnerHealthResponseDto } from './dto/partner-health-response.dto';
 import { PartnerHealthService } from './partner-health.service';
+import { PerformanceQueryDto } from './dto/performance-query.dto';
+import { PerformanceResponseDto } from './dto/performance-response.dto';
+import { PerformanceService } from './performance.service';
 
 @ApiTags('Analytics')
 @Controller('analytics')
@@ -37,6 +41,7 @@ export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly partnerHealthService: PartnerHealthService,
+    private readonly performanceService: PerformanceService,
   ) {}
 
   @Get('partner-health')
@@ -184,5 +189,53 @@ export class AnalyticsController {
     @Query() query: FeatureAdoptionQueryDto,
   ): Promise<FeatureAdoptionResponseDto> {
     return this.analyticsService.featureAdoption(query);
+  }
+
+  @Post('performance-events')
+  @Auth()
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Record a session, fatal crash or comparison load (BQ1)',
+    description:
+      'Idempotent per account by `clientEventId`; a session start, a session crash and a load are also stored once each. ' +
+      'SESSION_START and FATAL_CRASH require `sessionId`; COMPARISON_LOAD requires `loadId` and `outcome` (and `durationMs` when ' +
+      'content was shown). Fields of another type are rejected. `occurredAt` (UTC) decides the report window, so late syncs count ' +
+      'when they happened; at most 5 minutes in the future and 90 days old. No coordinates, stack traces or exception messages.',
+  })
+  @ApiAcceptedResponse({ description: 'Event accepted (empty body).' })
+  @ApiErrorResponse(
+    HttpStatus.BAD_REQUEST,
+    '/api/v1/analytics/performance-events',
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'durationMs is not allowed for SESSION_START',
+    },
+  )
+  async recordPerformanceEvent(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreatePerformanceEventDto,
+  ): Promise<void> {
+    await this.performanceService.record(userId, dto);
+  }
+
+  @Get('performance')
+  @Auth(UserRole.ANALYST)
+  @ApiOperation({
+    summary:
+      'BQ1: crash rate above 1% or comparison p95 above 2 s per device, OS and app version (ANALYST only)',
+    description:
+      'crashRate = started sessions with a captured fatal crash ÷ started sessions. p95 = nearest-rank over FRESH_NETWORK loads. ' +
+      'Flags are strictly above 0.01 / 2000 ms; empty samples are null and small ones are labelled INSUFFICIENT. ' +
+      '`from`/`to` are inclusive America/Bogota dates (at most 92 days). Demo rows and injected crashes only with includeSynthetic=true.',
+  })
+  @ApiOkResponse({ type: PerformanceResponseDto })
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST, '/api/v1/analytics/performance', {
+    code: ErrorCode.VALIDATION_ERROR,
+    message: 'from must be on or before to',
+  })
+  performance(
+    @Query() query: PerformanceQueryDto,
+  ): Promise<PerformanceResponseDto> {
+    return this.performanceService.report(query);
   }
 }

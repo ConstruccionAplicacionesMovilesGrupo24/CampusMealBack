@@ -38,6 +38,8 @@
     "seed:bq9:prod": "node dist/database/seeds/bq9.seed.js",
     "seed:bq13": "ts-node src/database/seeds/bq13.seed.ts",
     "seed:bq13:prod": "node dist/database/seeds/bq13.seed.js",
+    "seed:bq1": "ts-node src/database/seeds/bq1.seed.ts",
+    "seed:bq1:prod": "node dist/database/seeds/bq1.seed.js",
     "menu:edit": "ts-node src/database/scripts/menu-edit.ts",
     "menu:edit:prod": "node dist/database/scripts/menu-edit.js",
     "reviews:demo": "node scripts/demo-reviews.mjs"

@@ -626,3 +626,10 @@ Full contract, formulas, synthetic expected values and limitations: [SPRINT4_BQ1
 - `GET /api/v1/restaurants/{restaurantId}/reviews?limit=20&includeSynthetic=false` — authenticated. Summary means and recent reviews (no author). Everything is withheld with 1–4 distinct reviewers; the catalog `averageRating` is returned separately as `catalogRating` (`provenance: CATALOG_SEED`).
 - `GET /api/v1/analytics/partner-health?from=YYYY-MM-DD&to=YYYY-MM-DD&includeSynthetic=false` — `ANALYST` only (403 for `USER`). Per active restaurant: `menuStatus` (`FRESH` | `STALE` | `UNKNOWN`), revision counts, exposures, selections, selection rate and review aggregates; FRESH/STALE/UNKNOWN cohorts; Spearman associations or `INSUFFICIENT_DATA`.
 - Menu edits have no HTTP endpoint: `npm run menu:edit` is the only writer and records each effective edit in `menu_revisions`.
+
+## 15. Performance events and BQ1 (crash rate and comparison p95) — Sprint 4
+
+Full contract, formulas, fixtures and limitations: [SPRINT4_BQ1.md](./SPRINT4_BQ1.md).
+
+- `POST /api/v1/analytics/performance-events` — authenticated, **202** empty body, idempotent per account by `clientEventId`; one start and one crash per `sessionId`, one outcome per `loadId`. Types `SESSION_START`, `FATAL_CRASH`, `COMPARISON_LOAD`; common `deviceModel`, `osVersion`, `appVersion`, `platform`, `occurredAt` (UTC, `Z`, ≤ 5 min in the future, ≤ 90 days old). Fields of another type → **400**. No coordinates, messages or stack traces.
+- `GET /api/v1/analytics/performance?from=YYYY-MM-DD&to=YYYY-MM-DD&includeSynthetic=false` — `ANALYST` only (403 for `USER`). Per platform, device model, OS and app version: monitored crash rate and nearest-rank p95 of fresh-network comparison loads, flags strictly above 1% / 2000 ms, sample confidence and coverage.
