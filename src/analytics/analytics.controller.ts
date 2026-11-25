@@ -27,11 +27,44 @@ import { FeatureAdoptionQueryDto } from './dto/feature-adoption-query.dto';
 import { FeatureAdoptionResponseDto } from './dto/feature-adoption-response.dto';
 import { ZoneDemandQueryDto } from './dto/zone-demand-query.dto';
 import { ZoneDemandResponseDto } from './dto/zone-demand-response.dto';
+import { PartnerHealthQueryDto } from './dto/partner-health-query.dto';
+import { PartnerHealthResponseDto } from './dto/partner-health-response.dto';
+import { PartnerHealthService } from './partner-health.service';
 
 @ApiTags('Analytics')
 @Controller('analytics')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly partnerHealthService: PartnerHealthService,
+  ) {}
+
+  @Get('partner-health')
+  @Auth(UserRole.ANALYST)
+  @ApiOperation({
+    summary:
+      'BQ13: menu freshness versus selection rate and review scores (ANALYST only)',
+    description:
+      '`from`/`to` are inclusive America/Bogota dates (at most 92 days, `to` not after today); `to` is the cutoff date. ' +
+      'menuStatus FRESH = a recorded menu/price revision within the 7 calendar days ending at `to`; STALE = older revisions only; ' +
+      'UNKNOWN = no revision recorded. Exposure = distinct displayed recommendation offering the restaurant as WALK/ORDER; ' +
+      'selectionRate = selections ÷ exposures. Reviews are self-reported. Cells with 1-4 distinct users are suppressed and ' +
+      'left out of cohort totals. Spearman association only with ≥5 restaurants and non-constant values; observational only.',
+  })
+  @ApiOkResponse({ type: PartnerHealthResponseDto })
+  @ApiErrorResponse(
+    HttpStatus.BAD_REQUEST,
+    '/api/v1/analytics/partner-health',
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'from must be on or before to',
+    },
+  )
+  partnerHealth(
+    @Query() query: PartnerHealthQueryDto,
+  ): Promise<PartnerHealthResponseDto> {
+    return this.partnerHealthService.report(query);
+  }
 
   @Post('events')
   @Auth()
@@ -94,14 +127,11 @@ export class AnalyticsController {
       'Cells with fewer than five distinct users are suppressed.',
   })
   @ApiOkResponse({ type: ZoneDemandResponseDto })
-  @ApiErrorResponse(
-  HttpStatus.BAD_REQUEST,
-  '/api/v1/analytics/zone-demand',
-  {
+  @ApiErrorResponse(HttpStatus.BAD_REQUEST, '/api/v1/analytics/zone-demand', {
     code: ErrorCode.VALIDATION_ERROR,
-    message: 'from must be on or before to and the range must not exceed 92 days',
-  },
-)
+    message:
+      'from must be on or before to and the range must not exceed 92 days',
+  })
   zoneDemand(
     @Query() query: ZoneDemandQueryDto,
   ): Promise<ZoneDemandResponseDto> {
