@@ -42,7 +42,10 @@
     "seed:bq1:prod": "node dist/database/seeds/bq1.seed.js",
     "menu:edit": "ts-node src/database/scripts/menu-edit.ts",
     "menu:edit:prod": "node dist/database/scripts/menu-edit.js",
-    "reviews:demo": "node scripts/demo-reviews.mjs"
+    "reviews:demo": "node scripts/demo-reviews.mjs",
+    "seed:bq10": "ts-node src/database/seeds/bq10.seed.ts",
+    "seed:bq10:prod": "node dist/database/seeds/bq10.seed.js",
+    "verify:bq10:postgres": "node scripts/verify-bq10-postgres.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.5",
