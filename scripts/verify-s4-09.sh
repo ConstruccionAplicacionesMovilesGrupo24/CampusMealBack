@@ -16,7 +16,13 @@ uuid() { node -e 'console.log(require("crypto").randomUUID())'; }
 iso_minutes_ago() { M="$1" node -e 'console.log(new Date(Date.now()-Number(process.env.M)*6e4).toISOString().replace(/\.\d{3}Z$/,"Z"))'; }
 # Bogotá is UTC-5 all year (no daylight saving).
 bogota_day() { O="$1" node -e 'console.log(new Date(Date.now()-5*36e5+Number(process.env.O)*864e5).toISOString().slice(0,10))'; }
-login() { curl -s -X POST "$B/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" | json 'o.accessToken'; }
+# Passwords travel through the environment and are escaped by node, so any character is valid.
+credentials() { EMAIL_="$1" PASSWORD_="$2" node -e 'const b={email:process.env.EMAIL_,password:process.env.PASSWORD_};if(process.argv[1])b.fullName=process.argv[1];console.log(JSON.stringify(b))' "${3:-}"; }
+# auth PATH EXPECTED_STATUS BODY: stops the script on any other status, showing only the error body.
+auth() {
+  local code; code=$(printf '%s' "$3" | curl -s -o "$TMP" -w "%{http_code}" -X POST "$B/auth/$1" -H 'Content-Type: application/json' --data-binary @-)
+  if [ "$code" != "$2" ]; then echo "STOP $4: expected $2, got $code $(head -c 300 "$TMP")"; rm -f "$TMP"; exit 2; fi
+}
 check() { if [ "$2" = "$3" ]; then echo "PASS $1 ($3)"; else echo "FAIL $1: expected $2, got $3 $(head -c 200 "$TMP")"; FAILS=$((FAILS+1)); fi; }
 post() { curl -s -o "$TMP" -w "%{http_code}" -X POST "$B/analytics/performance-events" -H "Authorization: Bearer $1" -H 'Content-Type: application/json' -d "$2"; }
 get() { curl -s -o "$TMP" -w "%{http_code}" "$B/analytics/performance?$2" -H "Authorization: Bearer $1"; }
@@ -24,8 +30,11 @@ combo() { json "(()=>{const c=o.combinations.find(c=>c.deviceModel==='$1');retur
 
 TAG="Verify $(uuid | cut -c1-8)"
 EMAIL="s4-09-$(uuid | cut -c1-8)@campusmeal.local"
-curl -s -o /dev/null -X POST "$B/auth/register" -H 'Content-Type: application/json' -d "{\"fullName\":\"S4-09 verification\",\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
-U=$(login "$EMAIL" "$PASSWORD"); A=$(login analyst@campusmeal.local "$ANALYST_PASSWORD")
+# The analyst first: if that login fails, nothing has been written yet.
+BODY=$(credentials analyst@campusmeal.local "$ANALYST_PASSWORD"); auth login 200 "$BODY" "analyst login"; A=$(json 'o.accessToken' < "$TMP")
+BODY=$(credentials "$EMAIL" "$PASSWORD" "S4-09 verification"); auth register 201 "$BODY" "register test account"
+BODY=$(credentials "$EMAIL" "$PASSWORD"); auth login 200 "$BODY" "test account login"; U=$(json 'o.accessToken' < "$TMP")
+unset BODY
 NOW=$(iso_minutes_ago 1); TODAY=$(bogota_day 0)
 ev() { echo "{\"clientEventId\":\"$1\",\"eventType\":\"$2\",\"platform\":\"ANDROID\",\"deviceModel\":\"$TAG\",\"osVersion\":\"Android 16\",\"appVersion\":\"0.5.0\",\"occurredAt\":\"${4:-$NOW}\"$3}"; }
 
@@ -48,21 +57,35 @@ R=$(uuid); RS=$(uuid)
 for i in 1 2 3 4 5; do post "$U" "$(ev "$R" SESSION_START ",\"sessionId\":\"$RS\"")" >/dev/null & done; wait
 
 echo "== Validation"
-check "exception message rejected" 400 "$(post "$U" "$(ev "$(uuid)" FATAL_CRASH ",\"sessionId\":\"$(uuid)\",\"exceptionClass\":\"IllegalStateException: token abc\"")")"
-check "unknown field (latitude)" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\",\"latitude\":4.6")")"
-check "client cannot set synthetic" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\",\"synthetic\":true")")"
-check "session without sessionId" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START "")")"
-check "duration on a session" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\",\"durationMs\":10")")"
-check "load without loadId" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"outcome\":\"FRESH_NETWORK\",\"durationMs\":10")")"
-check "fresh load without duration" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"loadId\":\"$(uuid)\",\"outcome\":\"FRESH_NETWORK\"")")"
-check "negative duration" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"loadId\":\"$(uuid)\",\"outcome\":\"FRESH_NETWORK\",\"durationMs\":-1")")"
-check "unknown outcome" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"loadId\":\"$(uuid)\",\"outcome\":\"FAST\"")")"
-check "load on another screen" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"loadId\":\"$(uuid)\",\"outcome\":\"ERROR\",\"screen\":\"HOME\"")")"
-check "injected load" 400 "$(post "$U" "$(ev "$(uuid)" COMPARISON_LOAD ",\"loadId\":\"$(uuid)\",\"outcome\":\"ERROR\",\"injected\":true")")"
-check "91 days old" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\"" "$(iso_minutes_ago 131040)")")"
-check "1 hour in the future" 400 "$(post "$U" "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\"" "$(iso_minutes_ago -60)")")"
-check "no token" 401 "$(post invalid "$(ev "$(uuid)" SESSION_START ",\"sessionId\":\"$(uuid)\"")")"
-check "usage-events DTO still strict" 400 "$(curl -s -o "$TMP" -w "%{http_code}" -X POST "$B/analytics/usage-events" -H "Authorization: Bearer $U" -H 'Content-Type: application/json' -d "{\"clientEventId\":\"$(uuid)\",\"eventType\":\"SESSION_STARTED\",\"platform\":\"ANDROID\",\"occurredAt\":\"$NOW\",\"deviceModel\":\"x\"}")"
+# reject NAME TEXT TYPE EXTRA [OCCURRED_AT]: 400 VALIDATION_ERROR whose body mentions TEXT. A bare 400 is not
+# enough: a malformed JSON is a 400 too. Bodies are built outside nested quotes (bash 3.2 on macOS breaks them).
+reject() {
+  local body code
+  body=$(ev "$(uuid)" "$3" "$4" "${5:-}")
+  code=$(post "$U" "$body")
+  if [ "$code" = 400 ] && grep -q VALIDATION_ERROR "$TMP" && grep -qF -- "$2" "$TMP"; then echo "PASS $1 (400, $2)"
+  else echo "FAIL $1: expected 400 about '$2', got $code $(head -c 300 "$TMP")"; FAILS=$((FAILS+1)); fi
+}
+N=$(uuid)
+SID=",\"sessionId\":\"$N\""
+LID=",\"loadId\":\"$N\""
+reject "exception message rejected" "exceptionClass" FATAL_CRASH "$SID,\"exceptionClass\":\"IllegalStateException: token abc\""
+reject "unknown field (latitude)" "latitude" SESSION_START "$SID,\"latitude\":4.6"
+reject "client cannot set synthetic" "synthetic" SESSION_START "$SID,\"synthetic\":true"
+reject "session without sessionId" "sessionId" SESSION_START ""
+reject "duration on a session" "durationMs is not allowed" SESSION_START "$SID,\"durationMs\":10"
+reject "load without loadId" "loadId" COMPARISON_LOAD ",\"outcome\":\"FRESH_NETWORK\",\"durationMs\":10"
+reject "fresh load without duration" "durationMs" COMPARISON_LOAD "$LID,\"outcome\":\"FRESH_NETWORK\""
+reject "negative duration" "durationMs" COMPARISON_LOAD "$LID,\"outcome\":\"FRESH_NETWORK\",\"durationMs\":-1"
+reject "unknown outcome" "outcome" COMPARISON_LOAD "$LID,\"outcome\":\"FAST\""
+reject "load on another screen" "screen must be MEAL_COMPARISON" COMPARISON_LOAD "$LID,\"outcome\":\"ERROR\",\"screen\":\"HOME\""
+reject "injected load" "injected is not allowed" COMPARISON_LOAD "$LID,\"outcome\":\"ERROR\",\"injected\":true"
+reject "91 days old" "occurredAt" SESSION_START "$SID" "$(iso_minutes_ago 131040)"
+reject "1 hour in the future" "occurredAt" SESSION_START "$SID" "$(iso_minutes_ago -60)"
+BODY=$(ev "$(uuid)" SESSION_START "$SID"); check "no token" 401 "$(post invalid "$BODY")"
+BODY="{\"clientEventId\":\"$N\",\"eventType\":\"SESSION_STARTED\",\"platform\":\"ANDROID\",\"occurredAt\":\"$NOW\",\"deviceModel\":\"x\"}"
+CODE=$(curl -s -o "$TMP" -w "%{http_code}" -X POST "$B/analytics/usage-events" -H "Authorization: Bearer $U" -H 'Content-Type: application/json' -d "$BODY")
+check "usage-events DTO still strict" "400 deviceModel" "$CODE $(grep -o deviceModel "$TMP" | head -1)"
 
 echo "== Report access and range"
 check "USER role" 403 "$(get "$U" "from=$TODAY&to=$TODAY")"
