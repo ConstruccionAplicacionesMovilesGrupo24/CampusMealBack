@@ -212,7 +212,75 @@ this branch. Neon was not touched. `scripts/verify-s4-03.sh` (uses `node`, regis
 | — | `menu:edit` price, same price again, availability ×2, add, remove, restore price | 6 revisions; repeated price writes none; removed meal keeps `meal_name`, `meal_id` NULL | As expected |
 | — | `partner-health` for 2026-11-18…24 without synthetic after those edits | Green Bowl `FRESH`, `revisionsInRange 6`, others `UNKNOWN`; reviews suppressed (< 5 real reviewers) | As expected |
 
-Pending: the same script against Render + Neon after deployment (§8), recorded by the owner.
+### 7.1 Render + Neon (production)
+
+Run on 2026-11-25 (America/Bogota) against `https://campusmeal-api.onrender.com/api/v1`, deployed from `main`
+at `da297a4` (merge of PR #24). Before the run, on Neon with `.env.render`:
+
+| Step | Observed |
+|---|---|
+| `migration:show` before | 1–9 applied, `CreateReviewsAndMenuRevisions1790800000000` pending |
+| `migration:run` | Created `restaurant_reviews` and `menu_revisions` with their checks, keys and indexes in one transaction; committed |
+| `migration:show` after | 1–10 applied |
+| `bq13.seed.js` | Synthetic dataset prepared with anchor 2026-11-20 |
+| `GET /health` | `status ok`, `database up` |
+| Route probe without token | `GET …/restaurants/{id}/reviews` and `GET …/analytics/partner-health` → 401 (routes deployed); unknown route → 404 |
+
+`scripts/verify-s4-03.sh` with the demo accounts from `.env.render`; the script registered the reviewer
+`s4-03-3c8bea16@campusmeal.local`.
+
+| # | Expected | Observed on Render |
+|---|---|---|
+| 1 | 201 | 201 |
+| 2 | 200, same `reviewId` | 200, same `reviewId` |
+| 3 | 409 `CLIENT_REVIEW_ID_CONFLICT` | 409 `CLIENT_REVIEW_ID_CONFLICT` |
+| 4 | 409 `REVIEW_ALREADY_SUBMITTED_TODAY` | 409 `REVIEW_ALREADY_SUBMITTED_TODAY` |
+| 5–8 | 400 each | 400 each (`overall must not be greater than 5`, `property comment should not exist`, `occurredAt …` ×2) |
+| 9 | 404 `RESTAURANT_NOT_FOUND` | 404 `RESTAURANT_NOT_FOUND` |
+| 10 | 401 | 401 `INVALID_ACCESS_TOKEN` |
+| 11 | one 201, four 200 | `201 200 200 200 200` |
+| 12 | suppressed | suppressed, every value null |
+| 13 | 9 reviews, 7 reviewers | 9 / 7, mean overall 4.56, `catalogRating 4.6 CATALOG_SEED`, `includesSyntheticData: true` |
+| 14 | 403 | 403 `FORBIDDEN` |
+| 15–17 | 400 each | 400 each, specific messages |
+| 18 | §6.1 | Matches §6.1 row by row; cohorts FRESH 0.6429 / STALE 0.2727 / UNKNOWN 0; ρ = 0.8944 `COMPUTED`; reviews association `INSUFFICIENT_DATA` (n = 3); `revisionHistoryStartsAt 2026-10-31T17:05:00Z` |
+| 19 | §6.2 | Matches §6.2; Green Bowl behaviour and reviews suppressed; both associations `INSUFFICIENT_DATA` (n = 0) |
+| 20 | §6.3 | All `UNKNOWN`, both associations `INSUFFICIENT_DATA`, `includesSyntheticData: false` |
+
+Side effect: the verification account and its two real (non-synthetic) reviews of 2026-11-25 (Green Bowl and
+Sushi Rápido) stay in Neon. They are below the 5-reviewer threshold, so nothing about them is published.
+
+### 7.2 Visible demo reviews (Render + Neon)
+
+So that any account in the app sees published (not suppressed) reviews without `includeSynthetic`,
+`scripts/demo-reviews.mjs` (`npm run reviews:demo`) registered six demo accounts,
+`demo-reviewer-01…06@campusmeal.local` (password = the demo user's), and posted one review per account and
+active restaurant **through the public API** on 2026-11-25. The reviews are dated between 2026-11-14 and
+2026-11-23 (anchor `DEMO_REVIEWS_DATE=2026-11-24`).
+
+```bash
+API_URL=https://campusmeal-api.onrender.com/api/v1 PASSWORD=… ANALYST_PASSWORD=… npm run reviews:demo
+```
+
+| Run | Observed |
+|---|---|
+| First | 6 registrations 201, 30 reviews 201 |
+| Second (idempotency) | 30 replays 200, no new rows |
+
+Resulting public summaries (real reviews only, seen from the main demo account):
+
+| Restaurant | Reviewers | Reviews | meanOverall | meanWaitMinutes |
+|---|---:|---:|---:|---:|
+| Green Bowl | 7 | 7 | 4.57 | 9.14 |
+| Andean Flavor | 6 | 6 | 4.50 | 23.17 |
+| The Garden | 6 | 6 | 3.67 | 15.33 |
+| Quinoa Corner | 6 | 6 | 3.67 | 11.17 |
+| Sushi Rápido | 7 | 7 | 3.29 | 6.86 |
+
+Green Bowl and Sushi Rápido include the §7.1 verification account. **These rows are `synthetic = false`**: they
+are demo content entered through the real flow, and they count in BQ13 real-only reports (`includeSynthetic=false`).
+Before presenting real-only BQ13 results, either say so or delete the `demo-reviewer-*` and `s4-03-*` users
+(their reviews cascade).
 
 ## 8. Deployment (Render + Neon)
 
