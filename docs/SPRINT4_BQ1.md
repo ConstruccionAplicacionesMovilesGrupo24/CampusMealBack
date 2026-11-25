@@ -110,9 +110,25 @@ Run on 2026-11-25 against a **disposable local** PostgreSQL 18 container. Neon a
 | `typeorm schema:log` after migrating | "Your schema is up to date" |
 | `seed:bq1` twice | 539 rows both times (303 sessions, 5 crashes, 231 loads) |
 | `npm run build`, `npm run lint` | Success, no lint errors |
-| `scripts/verify-s4-09.sh` | 55 checks, all passed: ingestion and replays (10), validation (15), access and range (5), real records of the run (9), fixtures (16) |
+| `scripts/verify-s4-09.sh` (corrected, see below) | 55 checks, all passed: ingestion and replays (10), validation (15), access and range (5), real records of the run (9), fixtures (16) |
 
-Pending: the same script against Render + Neon after deployment, recorded by the owner.
+Correction (2026-11-25): the first version of the script sent a malformed JSON in "usage-events DTO still strict" with bash
+3.2 (macOS) and accepted any 400, so that check passed without testing anything and the other rejections were not conclusive.
+Every rejection now requires `VALIDATION_ERROR` about the expected field, and the script stops when a login fails. The run
+above was repeated with the corrected script on a new disposable database: 55 of 55 passed; a wrong analyst password stops it
+before any account is created.
+
+Deployed on 2026-11-25: migration `CreatePerformanceEvents1790950000000` and `seed:bq1` (539 rows) run against Neon by Juan
+Pablo; Render publishes both endpoints and answers 401 without a token.
+
+**Render + Neon (2026-11-25, run by Daniel):** `API_URL=https://campusmeal-api.onrender.com/api/v1 bash scripts/verify-s4-09.sh`
+with the corrected script → `ALL CHECKS PASSED`, 55 of 55 (ingestion and replays 10, validation 15, access and range 5, real
+records of the run 9, fixtures 16). The deployed commit is not exposed by the API and was not recorded: confirm in the Render
+dashboard that it is `6cdeb4a` or later.
+
+That run left one test account (`s4-09-…@campusmeal.local`) and its records in Neon. They are **not** synthetic rows: the real
+report of these dates contains a device `Verify …` (3 sessions, 1 crash, `INSUFFICIENT`; its injected session is excluded).
+Deleting that account removes its records (`ON DELETE CASCADE`); until then it must not be presented as real usage.
 
 ## 8. Deployment (Render + Neon)
 
