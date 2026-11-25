@@ -1,3 +1,9 @@
+import {
+  AlternativeMealDto,
+  AlternativeMealsRequestDto,
+  AlternativeMealsResponseDto,
+  AlternativesStatus,
+} from './dto/alternative-meals.dto';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -124,6 +130,107 @@ export class RestaurantsService {
       restaurants: results,
       lastUpdatedAt: new Date().toISOString(),
       routeProviderStatus: routeResult.status,
+    };
+  }
+
+  async alternatives(
+    dto: AlternativeMealsRequestDto,
+  ): Promise<AlternativeMealsResponseDto> {
+    // Current server time, not the potentially stale device request timestamp.
+    const asOf = new Date();
+    const restaurants = await this.restaurantRepository.find({
+      where: { active: true },
+      order: { name: 'ASC', id: 'ASC' },
+    });
+    const mealsByRestaurant = groupMeals(
+      await this.mealRepository.find({ where: { available: true } }),
+    );
+    const candidates: Candidate[] = [];
+    for (const restaurant of restaurants) {
+      const openingStatus = evaluateOpeningStatus(
+        restaurant.openingHours,
+        asOf,
+      );
+      if (openingStatus === OpeningStatus.CLOSED) continue;
+      const meals = (mealsByRestaurant.get(restaurant.id) ?? []).filter(
+        (meal) =>
+          meal.mealCategory !== null &&
+          meal.mealCategory !== dto.foodCategory &&
+          meal.price <= dto.maximumBudget &&
+          matchesDietaryPreferences(meal, dto.dietaryPreferences),
+      );
+      if (meals.length) candidates.push({ restaurant, meals, openingStatus });
+    }
+    const routeResult = candidates.length
+      ? await this.routeProvider.getWalkingTimes(
+          dto.location,
+          candidates.map(({ restaurant }) => ({
+            latitude: restaurant.latitude,
+            longitude: restaurant.longitude,
+          })),
+        )
+      : { status: RouteProviderStatus.AVAILABLE, estimates: [] };
+    const alternatives: AlternativeMealDto[] = [];
+    let unconfirmed = false;
+    for (const [index, candidate] of candidates.entries()) {
+      const walkingMinutes =
+        routeResult.estimates[index]?.walkingMinutes ?? null;
+      if (
+        walkingMinutes === null ||
+        !Number.isFinite(walkingMinutes) ||
+        walkingMinutes < 0
+      ) {
+        unconfirmed = true;
+        continue;
+      }
+      const totalMinutes = walkingMinutes * 2 + DEFAULT_DINING_MINUTES;
+      if (totalMinutes > dto.availableMinutes) continue;
+      const finishDining = new Date(
+        asOf.getTime() + (walkingMinutes + DEFAULT_DINING_MINUTES) * 60000,
+      );
+      if (
+        evaluateOpeningStatus(
+          candidate.restaurant.openingHours,
+          finishDining,
+        ) === OpeningStatus.CLOSED
+      )
+        continue;
+      for (const meal of candidate.meals) {
+        if (meal.mealCategory === null) continue;
+        alternatives.push({
+          restaurant: toRestaurantDto(
+            { ...candidate, meals: [meal] },
+            walkingMinutes,
+            totalMinutes,
+            dto.dietaryPreferences.length > 0,
+          ),
+          meal: toMealDto(meal),
+          substituteCategory: meal.mealCategory,
+          explanation: `Instead of ${dto.foodCategory}, this ${meal.mealCategory} option matches the requested budget, dietary preferences and estimated walking/dining time.`,
+          budgetCompatible: true,
+          dietCompatible: true,
+          timeCompatible: true,
+        });
+      }
+    }
+    alternatives.sort(
+      (a, b) =>
+        compareRestaurantResults(a.restaurant, b.restaurant) ||
+        a.meal.name.localeCompare(b.meal.name) ||
+        a.meal.id.localeCompare(b.meal.id),
+    );
+    return {
+      contractVersion: 1,
+      generatedAt: new Date().toISOString(),
+      asOf: asOf.toISOString(),
+      requestedCategory: dto.foodCategory,
+      routeProviderStatus: routeResult.status,
+      status: alternatives.length
+        ? AlternativesStatus.FOUND
+        : unconfirmed
+          ? AlternativesStatus.REACHABILITY_UNCONFIRMED
+          : AlternativesStatus.NO_COMPATIBLE_ALTERNATIVE,
+      alternatives: alternatives.slice(0, 30),
     };
   }
 

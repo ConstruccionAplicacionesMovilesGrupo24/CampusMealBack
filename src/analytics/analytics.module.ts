@@ -1,3 +1,4 @@
+import { SupplyGapService } from './supply-gap.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RecommendationRun } from '../recommendations/entities/recommendation-run.entity';
@@ -19,6 +20,11 @@ import { PerformanceService } from './performance.service';
     ]),
   ],
   controllers: [AnalyticsController],
-  providers: [AnalyticsService, PartnerHealthService, PerformanceService],
+  providers: [
+    SupplyGapService,
+    AnalyticsService,
+    PartnerHealthService,
+    PerformanceService,
+  ],
 })
 export class AnalyticsModule {}

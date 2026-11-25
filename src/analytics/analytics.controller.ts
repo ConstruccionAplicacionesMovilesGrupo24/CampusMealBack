@@ -1,3 +1,5 @@
+import { SupplyGapService } from './supply-gap.service';
+import { SupplyGapQueryDto, SupplyGapResponseDto } from './dto/supply-gap.dto';
 import {
   Body,
   Controller,
@@ -40,9 +42,21 @@ import { PerformanceService } from './performance.service';
 export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
+    private readonly supplyGapService: SupplyGapService,
     private readonly partnerHealthService: PartnerHealthService,
     private readonly performanceService: PerformanceService,
   ) {}
+
+  @Get('supply-gaps')
+  @Auth(UserRole.ANALYST)
+  @ApiOperation({
+    summary:
+      'BQ10: categorized demand versus current catalog supply (ANALYST only)',
+  })
+  @ApiOkResponse({ type: SupplyGapResponseDto })
+  supplyGaps(@Query() query: SupplyGapQueryDto): Promise<SupplyGapResponseDto> {
+    return this.supplyGapService.report(query);
+  }
 
   @Get('partner-health')
   @Auth(UserRole.ANALYST)
