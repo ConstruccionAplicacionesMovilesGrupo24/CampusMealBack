@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { OpeningPeriod } from '../opening-period';
+import { AnalyticsZone } from '../../analytics/enums/analytics-zone.enum';
 
 @Entity({ name: 'restaurants' })
 @Check('CHK_restaurants_name_not_blank', `length(btrim("name")) > 0`)
@@ -29,6 +30,14 @@ export class Restaurant {
 
   @Column({ type: 'varchar', length: 100 })
   category: string;
+
+  @Column({
+    name: 'analytics_zone',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  analyticsZone: AnalyticsZone | null;
 
   @Column({ type: 'varchar', length: 255 })
   address: string;

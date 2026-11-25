@@ -1,3 +1,4 @@
+import { AnalyticsZone } from '../../analytics/enums/analytics-zone.enum';
 import 'reflect-metadata';
 import { DietaryTag } from '../../restaurants/enums/dietary-tag.enum';
 import { Meal } from '../../restaurants/entities/meal.entity';
@@ -192,6 +193,7 @@ async function seed(): Promise<void> {
         restaurants.create({
           name: demo.name,
           category: demo.category,
+          analyticsZone: AnalyticsZone.BOGOTA_CENTRO,
           address: demo.address,
           latitude: demo.latitude,
           longitude: demo.longitude,

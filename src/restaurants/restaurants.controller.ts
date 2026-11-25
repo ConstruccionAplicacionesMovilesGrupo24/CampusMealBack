@@ -1,4 +1,8 @@
 import {
+  AlternativeMealsRequestDto,
+  AlternativeMealsResponseDto,
+} from './dto/alternative-meals.dto';
+import {
   Body,
   Controller,
   Get,
@@ -40,6 +44,18 @@ export class RestaurantsController {
     @Body() dto: SearchRestaurantsDto,
   ): Promise<RestaurantSearchResponseDto> {
     return this.restaurantsService.search(dto);
+  }
+
+  @Post('alternatives')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Find category substitutes that fit time, budget and diet',
+  })
+  @ApiOkResponse({ type: AlternativeMealsResponseDto })
+  alternatives(
+    @Body() dto: AlternativeMealsRequestDto,
+  ): Promise<AlternativeMealsResponseDto> {
+    return this.restaurantsService.alternatives(dto);
   }
 
   @Get(':restaurantId')
