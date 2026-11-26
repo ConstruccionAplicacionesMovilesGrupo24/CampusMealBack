@@ -6,7 +6,7 @@ Backend PR: [CampusMealBack #28](https://github.com/ConstruccionAplicacionesMovi
 Android counterpart: [S4-07 / #44](https://github.com/ConstruccionAplicacionesMovilesGrupo24/Sprint-2-Kotlin/issues/44).  
 Frozen scope: [SPRINT4_SCOPE.md, §5.2](https://github.com/ConstruccionAplicacionesMovilesGrupo24/Sprint-2-Kotlin/blob/main/android/docs/SPRINT4_SCOPE.md).
 
-**Status (2026-11-25):** Backend implementation, synthetic demand seed and PostgreSQL verification script are included in the PR. Local compilation, lint and all seven business-logic tests passed. The new migration, PostgreSQL integration checks, persistent seed execution and deployed HTTP validation are pending. The expected results below are not measured production results.
+**Status (2026-11-25, America/Bogota):** PR #28 was merged and deployed to Render. All 12 migrations are applied on Neon; the PostgreSQL verification script passed and rolled back its temporary transaction, and the seed verified 39 synthetic search events. Local build, lint and all seven business-logic tests passed. Deployed responses confirm categorized demand, privacy suppression, unknown supply, access control and an empty alternatives result. A positive deployed `FOUND` response and additional HTTP regression checks remain outstanding. See §7 for observed results; §6 describes controlled fixtures and expected results.
 
 ## 1. Business question
 
@@ -214,7 +214,7 @@ Each element of `alternatives` contains:
 | `NO_COMPATIBLE_ALTERNATIVE` | No compatible result found; do not silently relax constraints |
 | `REACHABILITY_UNCONFIRMED` | Otherwise eligible candidates lacked valid walking estimates and none were confirmed |
 
-`routeProviderStatus` is `AVAILABLE`, `PARTIAL` or `UNAVAILABLE`. The status of the route provider is separate from the result status. Expected HTTP outcomes: authenticated request with valid fields → 200 (including an empty alternatives array); invalid input → 400; unauthenticated request → 401. Deployed verification is pending.
+`routeProviderStatus` is `AVAILABLE`, `PARTIAL` or `UNAVAILABLE`. The status of the route provider is separate from the result status. Expected HTTP outcomes: authenticated request with valid fields → 200 (including an empty alternatives array); invalid input → 400; unauthenticated request → 401. The deployed empty-result path was observed; positive alternatives and additional HTTP error cases remain to be verified (§7).
 
 ## 5. Alternative discovery algorithm
 
@@ -279,7 +279,7 @@ The script additionally checks the Bogotá date boundary, exclusion of detail ev
 
 The seven tests cover exact demand thresholds, distinct restaurant counting, inactive/closed supply, zero versus unknown supply, complementary suppression, absent demand, alternative constraint preservation, and missing or excessive walking time. These are automated logic checks with controlled inputs and mocked dependencies; they are not a deployed end-to-end test.
 
-### 7.2 Pending remote validation
+### 7.2 Remote validation procedure and results
 
 Follow [DEPLOYMENT_RENDER_NEON.md](DEPLOYMENT_RENDER_NEON.md). Run from the reviewed commit with the team coordinated, the direct Neon connection in the ignored `.env.render`, and automatic Render deployment disabled. Do not include credentials, access tokens or database connection strings in evidence.
 
@@ -300,21 +300,35 @@ Run the seed a second time to verify the same fixture count. Stop if an unexpect
 
 | Check | Expected result | Observed result / status |
 |---|---|---|
-| Migration and schema | New migration applied; earlier schema preserved | Pending |
-| PostgreSQL integration fixtures | All assertions pass; transaction rolled back | Pending |
-| Persistent seed and repeated execution | 39 matching synthetic events, no duplicates | Pending |
+| Migration and schema | New migration applied; earlier schema preserved | **Passed:** 12/12 migrations marked applied; transaction committed successfully. |
+| PostgreSQL integration fixtures | All assertions pass; transaction rolled back | **Passed:** SQL filters, thresholds, one/zero/two supply, suppression, unknown coverage, dataset separation and supply-change reclassification; transaction rolled back. |
+| Persistent seed and repeated execution | 39 matching synthetic events, no duplicates | **Seed passed:** 39 matching events verified; a second execution was not recorded. |
 | `GET /health` | 200; database up | Pending for BQ10 deployment |
-| Supply-gaps as ANALYST | 200; valid contract and labeled dataset | Pending |
-| Supply-gaps as USER / no token | 403 / 401 | Pending |
+| Supply-gaps as ANALYST | 200; valid contract and labeled dataset | **Successful report payloads:** [normal](evidence/sprint4/s4-06-bq10/01-centro-demand.json), [sparse](evidence/sprint4/s4-06-bq10/02-centro-suppression.json), [unknown coverage](evidence/sprint4/s4-06-bq10/03-chapinero-unknown-supply.json). |
+| Supply-gaps as USER / no token | 403 / 401 | **Passed:** USER returned [403 FORBIDDEN](evidence/sprint4/s4-06-bq10/04-user-forbidden.png); earlier unauthenticated request returned 401 INVALID_ACCESS_TOKEN. |
 | Invalid zone / reversed range / range >92 days | 400 | Pending |
-| Synthetic normal and sparse windows | Expected demand counts or suppression, subject to other seeded events | Pending |
+| Synthetic normal and sparse windows | Expected demand counts or suppression, subject to other seeded events | **Passed:** 25 categorized intents in normal window; all six categories suppressed in sparse window. |
 | REAL dataset for the same interval | No BQ10 synthetic seed events included | Pending |
-| Alternatives as authenticated user | 200; every returned meal satisfies category, price, diet and estimated time constraints | Pending |
+| Alternatives as authenticated user | 200; every returned meal satisfies category, price, diet and estimated time constraints | **Empty response observed:** [NO_COMPATIBLE_ALTERNATIVE](evidence/sprint4/s4-06-bq10/05-alternatives-empty.json). Positive `FOUND` HTTP response pending; constraint filtering covered by unit tests. |
 | Alternatives with insufficient time or budget | 200; no incompatible result | Pending |
 | Alternatives with missing category / no token | 400 / 401 | Pending |
 | Existing restaurant search, detail and BQ9 | Previously supported behavior remains available | Pending |
 
 Record the deployed Git SHA, execution date, query inputs, HTTP status, relevant response fields and evidence links when each check is actually performed. Keep controlled fixture results separate from the shared catalog observations.
+
+### 7.3 Deployed observations (2026-11-25, America/Bogota)
+
+Render reported a successful live deployment of the merge of PR #28. The verified merge commit was `cd1947e7ef612d362701f9c2b9a12e2f1434a1b4`. The response timestamps below are UTC (November 26); the corresponding local date was November 25. Evidence consists of response bodies and a cropped HTTP 403 screenshot, not full request headers.
+
+| Scenario | Query / observed UTC time | Actual result |
+|---|---|---|
+| Normal synthetic demand | Centro, 2026-11-17, SYNTHETIC; 01:57:57 | 25 intents, 5 mapped restaurants, no suppression. BOWLS: 15 intents (60%), 5 searchers, 0 available restaurants, GAP. SOUPS and SUSHI: 5 intents each (20%), 5 searchers each, 1 available restaurant each, GAP. Other three categories: NO_OBSERVATIONS. |
+| Sparse demand | Centro, 2026-11-18, SYNTHETIC; 01:56:48 | All six categories SUPPRESSED; category demand metrics and denominator null. Catalog-only availability remains visible. |
+| Unknown supply | Chapinero, 2026-11-17, SYNTHETIC; 02:00:43 | 5 SUSHI searches from 5 distinct users (100%); 0 mapped restaurants; availableRestaurants and lowSupply null; UNKNOWN_SUPPLY. |
+| Role restriction | Chapinero, 2026-11-17, SYNTHETIC; 02:03:07 | HTTP 403 FORBIDDEN. |
+| Alternatives | SUSHI; 02:04:08 | NO_COMPATIBLE_ALTERNATIVE; routeProviderStatus AVAILABLE; empty alternatives array. No positive deployed example captured yet. |
+
+The observed live supply differs from the controlled PostgreSQL fixture by design: the latter includes two open BOWLS restaurants and demonstrates NO_GAP, whereas the deployed catalog had zero available BOWLS restaurants at the observed time. Neither report measures live inventory or proves the entire real-world supply. The PostgreSQL script also verified that adding a second SUSHI restaurant changes GAP to NO_GAP with the same historical demand. No permanent catalog records were added by that script.
 
 ## 8. Client integration and limitations
 

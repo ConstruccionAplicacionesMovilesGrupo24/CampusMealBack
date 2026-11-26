@@ -1,0 +1,9 @@
+{
+  "contractVersion": 1,
+  "generatedAt": "2026-11-26T02:04:08.883Z",
+  "asOf": "2026-11-26T02:04:08.872Z",
+  "requestedCategory": "SUSHI",
+  "routeProviderStatus": "AVAILABLE",
+  "status": "NO_COMPATIBLE_ALTERNATIVE",
+  "alternatives": []
+}
